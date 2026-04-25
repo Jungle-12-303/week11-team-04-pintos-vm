@@ -23,11 +23,22 @@ static int64_t ticks;
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
+static struct list sleep_list;
+
+
+/* Thread element */
+struct thread_elem {
+   struct list_elem elem;
+   struct thread* val;
+   int64_t ticks;
+};
 
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
+
+bool thread_tick_less(const struct list_elem *a_, const struct list_elem *b_, void *aux);
 
 /* Sets up the 8254 Programmable Interval Timer (PIT) to
    interrupt PIT_FREQ times per second, and registers the
@@ -43,6 +54,8 @@ timer_init (void) {
 	outb (0x40, count >> 8);
 
 	intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+
+	list_init(&sleep_list);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -93,8 +106,15 @@ timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	struct thread_elem te;
+	te.ticks = ticks + start;
+	te.val = thread_current();
+
+	enum intr_level old_level = intr_disable();
+	list_insert_ordered(&sleep_list, (struct list_elem *)&te, thread_tick_less, NULL);
+	
+	thread_block();
+	intr_set_level(old_level);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -126,6 +146,14 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	struct thread_elem *front = NULL;
+	while(!list_empty(&sleep_list) &&
+	 (front = list_entry(list_front(&sleep_list), struct thread_elem, elem)) &&
+	 front->val->status == THREAD_BLOCKED &&
+	 front->ticks <= ticks) {
+		list_pop_front(&sleep_list);
+		thread_unblock(front->val);
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
@@ -183,4 +211,13 @@ real_time_sleep (int64_t num, int32_t denom) {
 		ASSERT (denom % 1000 == 0);
 		busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000));
 	}
+}
+
+
+bool thread_tick_less(const struct list_elem *a_, const struct list_elem *b_, void *aux) {
+	const struct thread_elem *a = list_entry (a_, struct thread_elem, elem);
+	const struct thread_elem *b = list_entry (b_, struct thread_elem, elem);
+	struct thread_elem *front = NULL;
+
+	return a->ticks < b->ticks;
 }
