@@ -149,7 +149,6 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	struct thread_elem *front = NULL;
 	while(!list_empty(&sleep_list) &&
 	 (front = list_entry(list_front(&sleep_list), struct thread_elem, elem)) &&
-	 front->val->status == THREAD_BLOCKED &&
 	 front->ticks <= ticks) {
 		list_pop_front(&sleep_list);
 		thread_unblock(front->val);
