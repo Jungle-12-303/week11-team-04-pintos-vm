@@ -331,9 +331,11 @@ thread_set_priority (int new_priority) {
 	// printf("DEBUG: set priority %d into %d in thread %s\n",
 	// thread_current()->priority, new_priority, thread_name());
 	thread_current ()->priority = new_priority;
-	const struct thread *next = list_entry(list_front(&ready_list), struct thread, elem);
-	if(next->priority > new_priority) {
-		thread_yield();
+	if(!list_empty(&ready_list)) {
+		const struct thread *next = list_entry(list_front(&ready_list), struct thread, elem);
+		if(next->priority > new_priority) {
+			thread_yield();
+		}
 	}
 }
 
