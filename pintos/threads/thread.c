@@ -73,6 +73,13 @@ static tid_t allocate_tid (void);
  * somewhere in the middle, this locates the curent thread. */
 #define running_thread() ((struct thread *) (pg_round_down (rrsp ())))
 
+static bool thread_priority_greater (const struct list_elem *a_, 
+	const struct list_elem *b_, 
+	void * aux) {
+	const struct thread *a = list_entry(a_, struct thread, elem);
+	const struct thread *b = list_entry(b_, struct thread, elem);
+	return a->priority > b->priority;
+}
 
 // Global descriptor table for the thread_start.
 // Because the gdt will be setup after the thread_init, we should
@@ -207,6 +214,12 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	/* compare the priorities of the currently running 
+	thread and the newly inserted one. Yield the CPU if the
+	newly arriving thread has higher priority */
+	if(thread_current()->priority < t->priority) {
+		thread_yield();
+	}
 	return tid;
 }
 
@@ -240,7 +253,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	// list_push_back (&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &t->elem, thread_priority_greater, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -302,8 +316,11 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+	if (curr != idle_thread) {
+		// list_push_back (&ready_list, &curr->elem);
+		// struct thread
+		list_insert_ordered(&ready_list, &curr->elem, thread_priority_greater, NULL);
+	}
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -311,7 +328,14 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
+	// printf("DEBUG: set priority %d into %d in thread %s\n",
+	// thread_current()->priority, new_priority, thread_name());
 	thread_current ()->priority = new_priority;
+	// TODO: when thread lower its own priority so that no longer highest then.
+	const struct thread *next = list_entry(list_front(&ready_list), struct thread, elem);
+	if(next->priority > new_priority) {
+		thread_yield();
+	}
 }
 
 /* Returns the current thread's priority. */
