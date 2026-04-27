@@ -155,6 +155,19 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	
+	// 깨울 후보 리스트가 비어있지 않고, 첫번째 요소의 틱이 작거나 같으면
+	while(!(list_empty(&sleep_list)) && 
+	(list_entry(list_begin(&sleep_list), struct thread, elem)->wakeup_ticks <= ticks)){
+
+		// 첫번째 요소 꺼내기
+		struct list_elem* front_th = list_pop_front(&sleep_list);
+
+		// 타입 변환
+		struct thread *temp = list_entry(front_th, struct thread, elem);
+		
+		thread_unblock(temp); // 깨우기
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

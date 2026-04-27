@@ -647,7 +647,7 @@ bool ticks_sort(const struct list_elem *a, const struct list_elem *b, void *aux)
    struct thread *A = list_entry(a, struct thread, elem);
    struct thread *B = list_entry(b, struct thread, elem);
    
-   if((A->ticks) < (B->ticks)){
+   if((A->wakeup_ticks) < (B->wakeup_ticks)){
 	return 1;
    }
    else{
