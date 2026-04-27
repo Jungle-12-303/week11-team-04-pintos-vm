@@ -274,9 +274,12 @@ thread_unblock (struct thread *t) {
 	intr_set_level (old_level);
 
 	struct thread *curr = thread_current();
-	if (curr != idle_thread && curr->priority < t->priority){
-		thread_yield();
-	}
+
+	// if (curr != idle_thread && curr->priority < t->priority){
+	// 	// printf("[debug] t priority: %d, thread_yield\n", t->priority);
+	// 	//! 여기
+	// 	thread_yield();
+	// }
 }
 
 /* Returns the name of the running thread. */
@@ -341,6 +344,7 @@ thread_yield (void) {
 	*/
 	if (curr != idle_thread)
 		list_insert_ordered(&ready_list, &curr->elem, thread_priority_more, NULL);
+	//!여기
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -528,6 +532,7 @@ thread_launch (struct thread *th) {
 	 * and then switching to the next thread by calling do_iret.
 	 * Note that, we SHOULD NOT use any stack from here
 	 * until switching is done. */
+	//! 여기
 	__asm __volatile (
 			/* Store registers that will be used. */
 			"push %%rax\n"
@@ -590,6 +595,7 @@ do_schedule(int status) {
 		palloc_free_page(victim);
 	}
 	thread_current ()->status = status;
+	//! 여기
 	schedule ();
 }
 
@@ -627,6 +633,7 @@ schedule (void) {
 
 		/* Before switching the thread, we first save the information
 		 * of current running. */
+		//! 여기
 		thread_launch (next);
 	}
 }
