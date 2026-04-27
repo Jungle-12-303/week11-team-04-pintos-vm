@@ -149,7 +149,8 @@ extern struct list sleep_list;
 
 // 글로벌 함수 선언
 bool ticks_sort(const struct list_elem *a, const struct list_elem *b, void *aux);
-
+void thread_sleep(int64_t ticks);
+void thread_wakeup(int64_t ticks);
 
 
 #endif /* threads/thread.h */

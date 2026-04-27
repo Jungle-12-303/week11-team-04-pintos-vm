@@ -106,19 +106,15 @@ timer_sleep (int64_t ticks) {
 	while (timer_elapsed (start) < ticks)
 		thread_yield ();
 	*/
+
+	// 만약 틱이 0보다 작으면 잠들 필요가 없음.
+	if (ticks <=0){
+		return;
+	}
 	
-	enum intr_level old_level;
-	old_level = intr_disable (); // interrupt 잠시 꺼두기
+	// 현재 스레드를 잠재움
+	thread_sleep(ticks);
 
-	int64_t curr_ticks = timer_ticks(); // 현재 틱
-
-	struct thread *curr = thread_current();
-	curr->wakeup_ticks = ticks + curr_ticks; // 일어날틱 = 현재 틱 + 꺼두고 싶은 틱
-
-	list_insert_ordered(&sleep_list, &curr->elem, ticks_sort, NULL);
-
-	thread_block();	// thread 재우기
-	intr_set_level(old_level); // intrrupt 다시 켜기
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -156,18 +152,7 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
 	
-	// 깨울 후보 리스트가 비어있지 않고, 첫번째 요소의 틱이 작거나 같으면
-	while(!(list_empty(&sleep_list)) && 
-	(list_entry(list_begin(&sleep_list), struct thread, elem)->wakeup_ticks <= ticks)){
-
-		// 첫번째 요소 꺼내기
-		struct list_elem* front_th = list_pop_front(&sleep_list);
-
-		// 타입 변환
-		struct thread *temp = list_entry(front_th, struct thread, elem);
-		
-		thread_unblock(temp); // 깨우기
-	}
+	thread_wakeup(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

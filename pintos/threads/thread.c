@@ -640,6 +640,40 @@ allocate_tid (void) {
 	return tid;
 }
 
+/* 현재 스레드를 잠재움.*/
+void thread_sleep(int64_t ticks){
+	enum intr_level old_level;
+	old_level = intr_disable (); // interrupt 잠시 꺼두기
+
+	int64_t start = timer_ticks(); // 현재 틱
+
+	struct thread *curr = thread_current();
+	curr->wakeup_ticks = start + ticks ; // 일어날틱 = 현재 틱 + 꺼두고 싶은 틱
+
+	list_insert_ordered(&sleep_list, &curr->elem, ticks_sort, NULL);
+
+	thread_block();	// thread 재우기
+	intr_set_level(old_level); // intrrupt 다시 켜기
+}
+
+/* 잠든 스레드를 깨우기*/
+void thread_wakeup(int64_t ticks){
+	// 깨울 후보 리스트가 비어있지 않고, 첫번째 요소의 틱이 작거나 같으면
+	while(!(list_empty(&sleep_list)) && 
+	(list_entry(list_begin(&sleep_list), struct thread, elem)->wakeup_ticks <= ticks)){
+
+		// 첫번째 요소 꺼내기
+		struct list_elem* front_th = list_pop_front(&sleep_list);
+
+		// 타입 변환
+		struct thread *temp = list_entry(front_th, struct thread, elem);
+		
+		thread_unblock(temp); // 깨우기
+	}
+}
+
+
+
 // list_insert_ordered()의 less 역할을 하는 함수
 // a가 elem, b가 기존 리스트에서 추출된 멤버
 bool ticks_sort(const struct list_elem *a, const struct list_elem *b, void *aux){
