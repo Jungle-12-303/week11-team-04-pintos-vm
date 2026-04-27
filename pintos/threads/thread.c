@@ -80,7 +80,7 @@ static bool thread_tick_less (const struct list_elem *a, const struct list_elem 
 /*
 FOR_PRIORITY: 우선순위 비교 함수
 */
-static bool thread_priority_greater (const struct list_elem *a_, 
+bool thread_priority_greater (const struct list_elem *a_, 
 	const struct list_elem *b_, 
 	void * aux) {
 	const struct thread *a = list_entry(a_, struct thread, elem);
