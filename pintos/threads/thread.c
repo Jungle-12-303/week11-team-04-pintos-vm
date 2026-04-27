@@ -66,7 +66,7 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 static bool thread_tick_less (const struct list_elem *a, const struct list_elem *b, void *aux);
-static bool thread_priority_more (const struct list_elem *a, const struct list_elem *b, void *aux);
+bool thread_priority_more (const struct list_elem *a, const struct list_elem *b, void *aux);
 
 
 /* Returns true if T appears to point to a valid thread. */
@@ -79,6 +79,16 @@ static bool thread_priority_more (const struct list_elem *a, const struct list_e
  * somewhere in the middle, this locates the curent thread. */
 #define running_thread() ((struct thread *) (pg_round_down (rrsp ())))
 
+/*
+FOR_PRIORITY: 우선순위 비교 함수
+*/
+bool thread_priority_greater (const struct list_elem *a_, 
+	const struct list_elem *b_, 
+	void * aux) {
+	const struct thread *a = list_entry(a_, struct thread, elem);
+	const struct thread *b = list_entry(b_, struct thread, elem);
+	return a->priority > b->priority;
+}
 
 // Global descriptor table for the thread_start.
 // Because the gdt will be setup after the thread_init, we should
@@ -214,6 +224,15 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	/*
+	FOR_PRIORITY: 쓰레드 생성시, 기존 동작중이던 스레드보다 새로 들어온 우선순위가 높으면, 기존 스레드 yield
+	*/
+	/* compare the priorities of the currently running 
+	thread and the newly inserted one. Yield the CPU if the
+	newly arriving thread has higher priority */
+	if(thread_current()->priority < t->priority) {
+		thread_yield();
+	}
 	return tid;
 }
 
@@ -247,6 +266,9 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
+	/*
+	FOR_PRIORITY: unblock시 정렬 기준 삽입
+	*/
 	list_insert_ordered(&ready_list, &t->elem, thread_priority_more, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
@@ -314,6 +336,9 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
+	/*
+	FOR_PRIORITY: yield시 양보한 스레드는 정렬 기준 삽입
+	*/
 	if (curr != idle_thread)
 		list_insert_ordered(&ready_list, &curr->elem, thread_priority_more, NULL);
 	do_schedule (THREAD_READY);
@@ -323,6 +348,11 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
+	/*
+	FOR_PRIORITY: set_priority시 우선순위가 
+	ready_list의 highest priority보다 낮아지면 
+	해당 스레드가 CPU를 점유할 수 있게 현재 스레드를 yield한다.
+	*/
 	struct thread *curr = thread_current();
 	curr->priority = new_priority;
 
@@ -646,7 +676,7 @@ static bool thread_tick_less (const struct list_elem *a, const struct list_elem 
 	return t_a->wake_tick < t_b->wake_tick;
 }
 
-static bool thread_priority_more (const struct list_elem *a, const struct list_elem *b, void *aux) {
+bool thread_priority_more (const struct list_elem *a, const struct list_elem *b, void *aux) {
 	const struct thread *t_a = list_entry(a, struct thread, elem);
 	const struct thread *t_b = list_entry(b, struct thread, elem);
 
