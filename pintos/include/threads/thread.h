@@ -146,6 +146,6 @@ void do_iret (struct intr_frame *tf);
 
 /* alram clock 과제 함수 정의 */
 void wait_thread(int64_t ticks);
-void check_block_list();
+void check_sleep_list();
 
 #endif /* threads/thread.h */

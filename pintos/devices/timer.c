@@ -87,6 +87,7 @@ timer_elapsed (int64_t then) {
 	return timer_ticks () - then;
 }
 
+
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
@@ -124,14 +125,16 @@ void
 timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
+	// thread_tick 함수가 현재 4틱 소모 했는지 확인하고 다음 스레드로 양보하기 때문에 
+	// check_sleep_list()가 양보하는 1틱때 실행이 안되기 때문에 위에 있어야한다. 
+	check_sleep_list(ticks);
 	thread_tick ();
 	
-	check_block_list(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
