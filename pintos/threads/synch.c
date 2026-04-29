@@ -296,8 +296,8 @@ static bool semaphore_priority_less(const struct list_elem *a_, const struct lis
     struct semaphore_elem *sa = list_entry(a_, struct semaphore_elem, elem);
     struct semaphore_elem *sb = list_entry(b_, struct semaphore_elem, elem);
 
-    struct list_elem *la = list_begin(&sa->semaphore.waiters);
-    struct list_elem *lb = list_begin(&sb->semaphore.waiters);
+    struct list_elem *la = list_max(&sa->semaphore.waiters, thread_priority_less, NULL);
+    struct list_elem *lb = list_max(&sb->semaphore.waiters, thread_priority_less, NULL);
 
     struct thread *ta = list_entry(la, struct thread, elem);
     struct thread *tb = list_entry(lb, struct thread, elem);
