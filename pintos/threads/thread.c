@@ -66,7 +66,6 @@ static void do_schedule(int status);
 static void schedule(void);
 static tid_t allocate_tid(void);
 static bool thread_tick_less(const struct list_elem *a, const struct list_elem *b, void *aux);
-bool thread_priority_more(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -732,4 +731,12 @@ bool thread_priority_more(const struct list_elem *a, const struct list_elem *b, 
     const struct thread *t_b = list_entry(b, struct thread, elem);
 
     return t_a->priority > t_b->priority;
+}
+
+bool thread_priority_less(const struct list_elem *a, const struct list_elem *b, void *aux)
+{
+    const struct thread *t_a = list_entry(a, struct thread, elem);
+    const struct thread *t_b = list_entry(b, struct thread, elem);
+
+    return t_a->priority < t_b->priority;
 }
