@@ -35,7 +35,7 @@
 static void donate_priority();
 static void remove_donations_for_lock(struct lock *lock);
 static void refresh_priority();
-static bool semaphore_priority_more(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+static bool semaphore_priority_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 static bool donation_priority_more(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
@@ -130,8 +130,9 @@ void sema_up(struct semaphore *sema)
 
     if (!list_empty(&sema->waiters))
     {
-        list_sort(&sema->waiters, thread_priority_more, NULL);
-        sema_t = list_entry(list_pop_front(&sema->waiters), struct thread, elem);
+        struct list_elem *max_elem = list_max(&sema->waiters, thread_priority_less, NULL);
+        sema_t = list_entry(max_elem, struct thread, elem);
+        list_remove(max_elem);
         thread_unblock(sema_t);
     }
     sema->value++;
@@ -290,7 +291,7 @@ struct semaphore_elem
     struct semaphore semaphore; /* This semaphore. */
 };
 
-static bool semaphore_priority_more(const struct list_elem *a_, const struct list_elem *b_, void *aux)
+static bool semaphore_priority_less(const struct list_elem *a_, const struct list_elem *b_, void *aux)
 {
     struct semaphore_elem *sa = list_entry(a_, struct semaphore_elem, elem);
     struct semaphore_elem *sb = list_entry(b_, struct semaphore_elem, elem);
@@ -301,7 +302,7 @@ static bool semaphore_priority_more(const struct list_elem *a_, const struct lis
     struct thread *ta = list_entry(la, struct thread, elem);
     struct thread *tb = list_entry(lb, struct thread, elem);
 
-    return ta->priority > tb->priority;
+    return ta->priority < tb->priority;
 }
 
 /* Initializes condition variable COND.  A condition variable
@@ -366,10 +367,9 @@ void cond_signal(struct condition *cond, struct lock *lock UNUSED)
 
     if (!list_empty(&cond->waiters))
     {
-        list_sort(&cond->waiters, semaphore_priority_more, NULL);
-        sema_up(&list_entry(list_pop_front(&cond->waiters),
-                            struct semaphore_elem, elem)
-                     ->semaphore);
+        struct list_elem *max_elem = list_max(&cond->waiters, semaphore_priority_less, NULL);
+        sema_up(&list_entry(max_elem, struct semaphore_elem, elem)->semaphore);
+        list_remove(max_elem);
     }
 }
 
