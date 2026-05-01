@@ -1,0 +1,6 @@
+{
+"doxdocgen.generic.customTags": [
+    "@author 본인이름",
+    "@date {date}"    
+],
+}
