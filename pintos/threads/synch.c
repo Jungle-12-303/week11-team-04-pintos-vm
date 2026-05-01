@@ -37,6 +37,7 @@ static void remove_donations_for_lock(struct lock *lock);
 static void refresh_priority();
 static bool semaphore_priority_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 static bool donation_priority_more(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+static void add_or_update_donation (struct thread *holder, struct thread *donor);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -226,7 +227,7 @@ void lock_acquire(struct lock *lock)
 
     struct thread *curr = thread_current();
 
-    if (lock->holder != NULL && lock->holder->priority < curr->priority)
+    if (lock->holder != NULL)
     {
         curr->waiting_lock = lock;
         donate_priority();
@@ -388,24 +389,43 @@ void cond_broadcast(struct condition *cond, struct lock *lock)
         cond_signal(cond, lock);
 }
 
+/**
+ * @brief 우선순위를 기부하는 함수: current thread의
+ * waiting lock 멤버 변수 lock을 들고 있는 
+ * holder thread에게 우선순위를 기부하는 함수
+ * 
+ * @author hojun-lee99
+ * @date 2026-05-01
+ */
 static void donate_priority()
 {
     struct thread *donor = thread_current();
-    struct lock *lock = donor->waiting_lock;
-
-    if (lock != NULL && lock->holder != NULL)
+    
+    while (donor->waiting_lock != NULL)
     {
+        struct lock *lock = donor->waiting_lock;
         struct thread *holder = lock->holder;
 
+        if (holder == NULL)
+            break;
+        
+        add_or_update_donation (holder, donor);
+        
         if (holder->priority >= donor->priority)
-            return;
-
+            break;
+        
         holder->priority = donor->priority;
-
-        list_insert_ordered(&holder->donations, &donor->donation_elem, donation_priority_more, NULL);
+        donor = holder;
     }
 }
 
+/**
+ * @brief current thread가 락을 풀어주면서, 기부 받았던 우선순위를 반환하는 함수
+ * 
+ * @param lock 
+ * @author hojun-lee99
+ * @date 2026-05-01
+ */
 static void remove_donations_for_lock(struct lock *lock)
 {
     struct thread *curr = thread_current();
@@ -426,6 +446,13 @@ static void remove_donations_for_lock(struct lock *lock)
     }
 }
 
+/**
+ * @brief current thread의 우선순위를 체크하는 함수, 도네이션 받은 우선순위와 original 우선순위를 비교해
+ * 가장 큰 우선순위를 current thread의 우선순위로 설정하는 함수
+ * 
+ * @author hojun-lee99
+ * @date 2026-05-01
+ */
 static void refresh_priority()
 {
     struct thread *curr = thread_current();
@@ -437,13 +464,51 @@ static void refresh_priority()
     }
 
     struct thread *donor = list_entry(list_begin(&curr->donations), struct thread, donation_elem);
-    curr->priority = donor->priority;
+    curr->priority = curr->original_priority > donor->priority
+                         ? curr->original_priority
+                         : donor->priority;
 }
 
+/**
+ * @brief thread의 맴버 변수 donations 리스트 비교용 함수 a의 우선순위가 b보다 클 경우 true를 반환
+ * 
+ * @param a list_elem *
+ * @param b list_elem *
+ * @return true 
+ * @return false 
+ * @author hojun-lee99
+ * @date 2026-05-01
+ */
 static bool donation_priority_more(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
     const struct thread *ta = list_entry(a, struct thread, donation_elem);
     const struct thread *tb = list_entry(b, struct thread, donation_elem);
 
     return ta->priority > tb->priority;
+}
+
+/**
+ * @brief donor 스레드를 holder 스레드의 donations의 리스트에 추가할 때, 
+ * donor thread가 이미 들어가 있는 경우, 삭제하고 insert 해주는 함수
+ * 
+ * @param holder lock을 들고있는 struct thread *
+ * @param donor priority를 주는 struct current thread *
+ * @author hojun-lee99
+ * @date 2026-05-01
+ */
+static void add_or_update_donation (struct thread *holder, struct thread *donor)
+{
+    struct list_elem *e = list_begin (&holder->donations);
+
+    for (; e != list_end (&holder->donations); e = list_next (e))
+    {
+        struct thread *t = list_entry (e, struct thread, donation_elem);
+
+        if (t == donor) {
+            list_remove (e);
+            break;
+        }
+    }
+
+    list_insert_ordered (&holder->donations, &donor->donation_elem, donation_priority_more, NULL);
 }
