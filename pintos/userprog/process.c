@@ -21,6 +21,7 @@
 #ifdef VM
 #include "vm/vm.h"
 #endif
+#include "threads/synch.h"
 
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
@@ -204,6 +205,10 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	// 9억 번 돌면서 프로그램 돌아가게 임시로 해놓음.
+	// while(1) {}
+	// printf("TID: %d\n", child_tid);
+	for(int i = 0; i < 100000000*9; i++);
 	return -1;
 }
 
@@ -414,8 +419,41 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
+	
 	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	* TODO: Implement argument passing (see project2/argument_passing.html). */
+	
+	// TODO: arguemtn 하드코딩. 이제 인수 개수별로 처리해줘야함.
+	// 유저 스택에 str를 복사해서 넣는다.
+	if_->rsp -= strlen(file_name) + 1;
+	memcpy((void *)if_->rsp, file_name, strlen(file_name) + 1);
+	uint64_t arg0_addr = if_->rsp;
+	
+	// 8byte 단위로 word align
+	while(if_->rsp % 8 != 0) {
+		if_->rsp--;
+		*(uint8_t *) if_->rsp = 0;
+	}
+
+	// argv[1]
+	if_->rsp -= 8;
+	*(uint64_t *)if_->rsp = NULL;
+
+	// argv[0]
+	if_->rsp -= 8;
+	*(uint64_t *)if_->rsp = arg0_addr;
+
+	// user stack을 위한 메모리 복사
+	uint64_t argv_addr = if_->rsp;
+	
+	// return address: 0
+	if_->rsp -= 8;
+	*(uint64_t *)if_->rsp = 0;
+
+	// argc
+	if_->R.rdi = 1;
+	// argv[0] address
+	if_->R.rsi = argv_addr;
 
 	success = true;
 

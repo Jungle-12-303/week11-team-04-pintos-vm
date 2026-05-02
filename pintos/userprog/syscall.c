@@ -41,6 +41,20 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+	// printf ("system call!\n");
+	if(f->R.rax == SYS_WRITE) {
+		uint64_t fd    = (uint64_t )f->R.rdi; // File descriptor
+		void *arg0 = (void *)f->R.rsi; // buffer
+		void *arg1 = (void *)f->R.rdx; // size
+		for(int i = 0; i < (size_t)arg1; i++) {
+			printf("%c", *((char *)arg0 + i));
+		}
+		f->R.rax = 0;
+	} else if(f->R.rax == SYS_EXIT) {
+		int ret = (int)f->R.rdi;
+		// FIXME: 프로그램 이름으로 해야하는데 임시로 thread_name으로 넣어둠.
+		// exit에 대한 다른 방법을 사용해야함. lib.c의 vmsg 함수 안 주석 참고
+		printf("%s: exit(%d)\n", thread_name(),ret);
+		thread_exit();
+	}
 }
