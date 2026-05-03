@@ -7,6 +7,7 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "kernel/stdio.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -41,20 +42,26 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	// printf ("system call!\n");
-	if(f->R.rax == SYS_WRITE) {
-		uint64_t fd    = (uint64_t )f->R.rdi; // File descriptor
-		void *arg0 = (void *)f->R.rsi; // buffer
-		void *arg1 = (void *)f->R.rdx; // size
-		for(int i = 0; i < (size_t)arg1; i++) {
-			printf("%c", *((char *)arg0 + i));
+	uint64_t sys_num = f->R.rax;
+	uint64_t arg0 = f->R.rdi;
+	uint64_t arg1 = f->R.rsi;
+	uint64_t arg2 = f->R.rdx;
+	uint64_t arg3 = f->R.rcx;
+	uint64_t arg4 = f->R.r8;
+	uint64_t arg5 = f->R.r9;
+
+	if(sys_num == SYS_WRITE) {
+		uint64_t fd     = arg0; // File descriptor
+		void *buf       = (void *)arg1; // buffer
+		size_t buf_size = (size_t)arg2; // size
+		if(fd == 1) {
+			putbuf(buf, buf_size);
 		}
-		f->R.rax = 0;
+
+		// 사용한 바이트 수 만큼 리턴
+		f->R.rax = buf_size;
 	} else if(f->R.rax == SYS_EXIT) {
-		int ret = (int)f->R.rdi;
-		// FIXME: 프로그램 이름으로 해야하는데 임시로 thread_name으로 넣어둠.
-		// exit에 대한 다른 방법을 사용해야함. lib.c의 vmsg 함수 안 주석 참고
-		printf("%s: exit(%d)\n", thread_name(),ret);
+		thread_current()->exit_code = arg0;
 		thread_exit();
 	}
 }

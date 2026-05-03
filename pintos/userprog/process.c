@@ -22,6 +22,7 @@
 #include "vm/vm.h"
 #endif
 #include "threads/synch.h"
+#include "lib/string.h"
 
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
@@ -51,8 +52,14 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	// 스레드 이름은 args 옵션을 뺀 실제 파일 이름이어야한다.
+	char *actual_name, *save_ptr;
+	actual_name = malloc(strlen(file_name) + 1);
+	strlcpy(actual_name, file_name, strlen(file_name) + 1);
+	strtok_r(actual_name, " ", &save_ptr);
+
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (actual_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -208,6 +215,7 @@ process_wait (tid_t child_tid UNUSED) {
 	// 9억 번 돌면서 프로그램 돌아가게 임시로 해놓음.
 	// while(1) {}
 	// printf("TID: %d\n", child_tid);
+	// TODO: 프로세스 기다리기 구현
 	for(int i = 0; i < 100000000*9; i++);
 	return -1;
 }
@@ -220,7 +228,9 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-
+	
+	int exit_code = thread_current()->exit_code;
+	printf("%s: exit(%d)\n", thread_name(), exit_code);
 	process_cleanup ();
 }
 
@@ -340,8 +350,15 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+	// TODO: file_name bytes 제한
+	// 파일 이름 추출 - malloc
+	size_t file_name_len = 0;
+	for(file_name_len = 0; file_name[file_name_len] != '\0' && file_name[file_name_len] != ' '; file_name_len++);
+	char *file_name_start = malloc(file_name_len + 1);
+	strlcpy(file_name_start, file_name, file_name_len + 1);
+
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (file_name_start);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -425,9 +442,21 @@ load (const char *file_name, struct intr_frame *if_) {
 	
 	// TODO: arguemtn 하드코딩. 이제 인수 개수별로 처리해줘야함.
 	// 유저 스택에 str를 복사해서 넣는다.
-	if_->rsp -= strlen(file_name) + 1;
-	memcpy((void *)if_->rsp, file_name, strlen(file_name) + 1);
-	uint64_t arg0_addr = if_->rsp;
+	// TODO: size 제한
+	char *token, *save_ptr;
+	size_t argc = 0;
+	// TODO: argv_addrs 사이즈 reasonable로 결정
+	uint64_t argv_addrs[100];
+
+	// TODO: s의 사이즈를 reasonable로 결정해야함.
+	char s[1024] = {0}; strlcpy(s, file_name, strlen(file_name) + 1);
+	for(token = strtok_r(s, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
+		if_->rsp -= strlen(token) + 1;
+		memcpy((void *)if_->rsp, token, strlen(token) + 1);
+		argv_addrs[argc] = if_->rsp;
+		++argc;
+	}
+	// uint64_t arg0_addr = if_->rsp;
 	
 	// 8byte 단위로 word align
 	while(if_->rsp % 8 != 0) {
@@ -435,13 +464,15 @@ load (const char *file_name, struct intr_frame *if_) {
 		*(uint8_t *) if_->rsp = 0;
 	}
 
-	// argv[1]
+	// argv[argc] = NULL
 	if_->rsp -= 8;
 	*(uint64_t *)if_->rsp = NULL;
 
-	// argv[0]
-	if_->rsp -= 8;
-	*(uint64_t *)if_->rsp = arg0_addr;
+	// argv[i]
+	for(int i = 0; i < argc; i++) {
+		if_->rsp -= 8;
+		*(uint64_t *)if_->rsp = argv_addrs[argc-i-1];
+	}
 
 	// user stack을 위한 메모리 복사
 	uint64_t argv_addr = if_->rsp;
@@ -451,7 +482,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	*(uint64_t *)if_->rsp = 0;
 
 	// argc
-	if_->R.rdi = 1;
+	if_->R.rdi = argc;
+
 	// argv[0] address
 	if_->R.rsi = argv_addr;
 
