@@ -32,6 +32,7 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+static bool get_program_name (const char *cmdline, char *program_name, const size_t size);
 
 /* General process initializer for initd and other process. */
 static void
@@ -58,15 +59,35 @@ process_create_initd (const char *file_name) {
 
 	// 스레드 이름은 args 옵션을 뺀 실제 파일 이름이어야한다.
 	char actual_name[THREAD_NAME_MAX];
-	char *save_ptr;
-	strlcpy(actual_name, file_name, MIN(strlen(file_name) + 1, THREAD_NAME_MAX));
-	strtok_r(actual_name, " ", &save_ptr);
+
+
+	// char *save_ptr;
+	// strlcpy(actual_name, file_name, MIN(strlen(file_name) + 1, THREAD_NAME_MAX));
+	// strtok_r(actual_name, " ", &save_ptr);
+
+	get_program_name(file_name, actual_name, THREAD_NAME_MAX);
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (actual_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
+}
+
+/**
+ * cmdline은 쪼개야할 데이터를 받음
+ * program_name은 결과를 저장할 버퍼를 받음
+ * size는 버퍼 크기
+ * @author minmings111@gmail.com
+ * @date 2026-05-04
+ */
+static bool
+get_program_name (const char *cmdline, char *program_name, const size_t size){
+	char *save_ptr;
+	strlcpy(program_name, cmdline, MIN(strlen(cmdline) + 1, size));
+	strtok_r(program_name, " ", &save_ptr);
+
+	return save_ptr == NULL;
 }
 
 /* A thread function that launches first user process. */
@@ -347,6 +368,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	off_t file_ofs;
 	bool success = false;
 	int i;
+	uint64_t *argv_addrs = NULL; // 인수 주소값
+	char* s = NULL;
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
@@ -356,15 +379,27 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	// TODO: file_name bytes 제한
 	// 파일 이름 추출 - malloc
-	size_t file_name_len = 0, prefix_offset = 0;
-	while(file_name[0] == ' ') file_name++;
-	for(file_name_len = 0; file_name[file_name_len] != '\0' && file_name[file_name_len] != ' '; file_name_len++);
-	char *file_name_start = malloc(file_name_len + 1);
-	strlcpy(file_name_start, file_name, file_name_len + 1);
+
+	char file_name_start[THREAD_NAME_MAX];
+	// strlcpy(file_name_start, file_name, file_name_len + 1);
+
+	get_program_name(file_name, file_name_start, THREAD_NAME_MAX);
+	s = malloc(strlen(file_name) + 1);
+	char *save_ptr, *token;
+	if(s == NULL) {
+		printf("load: %s: malloc failed\n", file_name);
+		goto done;
+	} 
+	strlcpy(s, file_name, strlen(file_name) + 1);
+	token = strtok_r(s, " ", &save_ptr);
+	if(file_name_start == NULL || strlen(file_name_start) == 0) {
+		printf("load: file_name_start is NULL or empty str.\n");
+		goto done;
+	}
+	token = strtok_r(NULL, " ", &save_ptr);
 
 	/* Open executable file. */
 	file = filesys_open (file_name_start);
-	free(file_name_start);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -446,17 +481,28 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* TODO: Your code goes here.
 	* TODO: Implement argument passing (see project2/argument_passing.html). */
 	
-	// TODO: arguemtn 하드코딩. 이제 인수 개수별로 처리해줘야함.
-	// 유저 스택에 str를 복사해서 넣는다.
-	// TODO: size 제한
-	char *token, *save_ptr;
-	size_t argc = 0;
+	size_t argc = 1, max_argc = 1;
 	// TODO: argv_addrs 사이즈 reasonable로 결정
-	uint64_t argv_addrs[100];
+	if(strlen(file_name) == 0) {
+		printf("load: file_name len is 0.\n");
+		goto done;
+	}
+	for(int i = 0; i + 1< strlen(file_name); ++i) {
+		if(file_name[i] == ' ' && file_name[i+1] != ' ') {
+			max_argc++;
+		}
+	}
+	if(file_name[0] == ' ') max_argc--;
+	argv_addrs = malloc(sizeof(uint64_t) * max_argc);
+	if(argv_addrs == NULL) {
+		printf ("load: malloc: argv_address failed\n");
+		goto done;
+	}
+	if_->rsp -= strlen(s) + 1;
+	memcpy((void *)if_->rsp, s, strlen(s) + 1);
+	argv_addrs[0] = if_->rsp;
 
-	// TODO: s의 사이즈를 reasonable로 결정해야함.
-	char s[1024] = {0}; strlcpy(s, file_name, strlen(file_name) + 1);
-	for(token = strtok_r(s, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
+	for(; token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
 		if_->rsp -= strlen(token) + 1;
 		memcpy((void *)if_->rsp, token, strlen(token) + 1);
 		argv_addrs[argc] = if_->rsp;
@@ -498,6 +544,8 @@ load (const char *file_name, struct intr_frame *if_) {
 done:
 	/* We arrive here whether the load is successful or not. */
 	file_close (file);
+	free(s);
+	free(argv_addrs);
 	return success;
 }
 
