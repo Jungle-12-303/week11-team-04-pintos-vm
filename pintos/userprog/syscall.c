@@ -57,7 +57,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		const void *buf       = (void *)arg1; // buffer
 		size_t buf_size = (size_t)arg2; // size
 		// TODO 잘못된 fd가 왔을때 처리 로직
-		
+		if(fd <= 0) {
+			f->R.rax = -1;
+			return;
+		}
 
 		if(fd == 1) {
 			if (!is_valid_user_buffer(buf, buf_size))
