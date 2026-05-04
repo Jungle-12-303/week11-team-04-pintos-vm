@@ -249,13 +249,16 @@ process_wait (tid_t child_tid UNUSED) {
 	// for(int i = 0; i < 100000000*9; i++);
 	struct child_status *status = get_child_status(child_tid);
 	if (status == NULL) { 
-		printf("!: NULL\n");
 		return -1;
 	} else if(status->exited) {
-		printf("!: EXITED\n");
 		return -1;
 	}
-	child_status_sema_down(status);
+	if(status->waited) {
+		child_status_sema_down(status);
+		status->waited = false;
+	} else {
+		return -1;
+	}
 	return status->exit_code;
 }
 
