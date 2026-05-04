@@ -27,6 +27,7 @@
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
 #include "userprog/tss.h"
+#include "userprog/process_child.h"
 #endif
 #include "tests/threads/tests.h"
 #ifdef VM
@@ -241,11 +242,13 @@ run_task (char **argv) {
 
 	printf ("Executing '%s':\n", task);
 #ifdef USERPROG
+	init_process_status_list();
 	if (thread_tests){
 		run_test (task);
 	} else {
 		process_wait (process_create_initd (task));
 	}
+	destory_child_statuses();
 #else
 	run_test (task);
 #endif

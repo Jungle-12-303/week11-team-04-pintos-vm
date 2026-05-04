@@ -18,6 +18,7 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "process_child.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -69,8 +70,12 @@ process_create_initd (const char *file_name) {
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (actual_name, PRI_DEFAULT, initd, fn_copy);
-	if (tid == TID_ERROR)
+	if (tid == TID_ERROR) {
 		palloc_free_page (fn_copy);
+	} else {
+		child_status_insert(tid);
+	}
+	
 	return tid;
 }
 
@@ -241,8 +246,20 @@ process_wait (tid_t child_tid UNUSED) {
 	// while(1) {}
 	// printf("TID: %d\n", child_tid);
 	// TODO: 프로세스 기다리기 구현
-	for(int i = 0; i < 100000000*9; i++);
-	return -1;
+	// for(int i = 0; i < 100000000*9; i++);
+	struct child_status *status = get_child_status(child_tid);
+	if (status == NULL) { 
+		return -1;
+	} else if(status->exited) {
+		return -1;
+	}
+	if(status->waited) {
+		child_status_sema_down(status);
+		status->waited = false;
+	} else {
+		return -1;
+	}
+	return status->exit_code;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -256,6 +273,13 @@ process_exit (void) {
 
 	int exit_code = thread_current()->exit_code;
 	printf("%s: exit(%d)\n", thread_name(), exit_code);
+	struct child_status *victim_status = get_child_status(curr->tid);
+	if(victim_status == NULL) {
+		process_cleanup ();
+		return;
+	}
+	victim_status->exit_code = exit_code;
+	child_status_sema_up(victim_status);
 	process_cleanup ();
 }
 
