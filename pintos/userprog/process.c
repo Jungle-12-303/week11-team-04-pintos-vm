@@ -368,6 +368,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	off_t file_ofs;
 	bool success = false;
 	int i;
+	uint64_t *argv_addrs = NULL; // 인수 주소값
+	char* s = NULL;
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
@@ -382,10 +384,22 @@ load (const char *file_name, struct intr_frame *if_) {
 	// strlcpy(file_name_start, file_name, file_name_len + 1);
 
 	get_program_name(file_name, file_name_start, THREAD_NAME_MAX);
+	s = malloc(strlen(file_name) + 1);
+	char *save_ptr, *token;
+	if(s == NULL) {
+		printf("load: %s: malloc failed\n", file_name);
+		goto done;
+	} 
+	strlcpy(s, file_name, strlen(file_name) + 1);
+	token = strtok_r(s, " ", &save_ptr);
+	if(file_name_start == NULL || strlen(file_name_start) == 0) {
+		printf("load: file_name_start is NULL or empty str.\n");
+		goto done;
+	}
+	token = strtok_r(NULL, " ", &save_ptr);
 
 	/* Open executable file. */
 	file = filesys_open (file_name_start);
-	// free(file_name_start);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -467,17 +481,28 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* TODO: Your code goes here.
 	* TODO: Implement argument passing (see project2/argument_passing.html). */
 	
-	// TODO: arguemtn 하드코딩. 이제 인수 개수별로 처리해줘야함.
-	// 유저 스택에 str를 복사해서 넣는다.
-	// TODO: size 제한
-	char *token, *save_ptr;
-	size_t argc = 0;
+	size_t argc = 1, max_argc = 1;
 	// TODO: argv_addrs 사이즈 reasonable로 결정
-	uint64_t argv_addrs[100];
+	if(strlen(file_name) == 0) {
+		printf("load: file_name len is 0.\n");
+		goto done;
+	}
+	for(int i = 0; i + 1< strlen(file_name); ++i) {
+		if(file_name[i] == ' ' && file_name[i+1] != ' ') {
+			max_argc++;
+		}
+	}
+	if(file_name[0] == ' ') max_argc--;
+	argv_addrs = malloc(sizeof(uint64_t) * max_argc);
+	if(argv_addrs == NULL) {
+		printf ("load: malloc: argv_address failed\n");
+		goto done;
+	}
+	if_->rsp -= strlen(s) + 1;
+	memcpy((void *)if_->rsp, s, strlen(s) + 1);
+	argv_addrs[0] = if_->rsp;
 
-	// TODO: s의 사이즈를 reasonable로 결정해야함.
-	char s[1024] = {0}; strlcpy(s, file_name, strlen(file_name) + 1);
-	for(token = strtok_r(s, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
+	for(; token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
 		if_->rsp -= strlen(token) + 1;
 		memcpy((void *)if_->rsp, token, strlen(token) + 1);
 		argv_addrs[argc] = if_->rsp;
@@ -519,6 +544,8 @@ load (const char *file_name, struct intr_frame *if_) {
 done:
 	/* We arrive here whether the load is successful or not. */
 	file_close (file);
+	free(s);
+	free(argv_addrs);
 	return success;
 }
 
