@@ -42,7 +42,7 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	uint64_t sys_num = f->R.rax;
+	uint64_t sys_num = f->R.rax; // 커널 진입시, 호출된 시스템콜이 무엇인지 확인하는 번호
 	uint64_t arg0 = f->R.rdi;
 	uint64_t arg1 = f->R.rsi;
 	uint64_t arg2 = f->R.rdx;
@@ -56,11 +56,21 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		size_t buf_size = (size_t)arg2; // size
 		if(fd == 1) {
 			putbuf(buf, buf_size);
+			// 시스템콜 처리가 끝날 때는 같은 rax를 반환값 저장용으로 사용
+			f->R.rax = buf_size; // 사용한 바이트 수 만큼 리턴
+		}
+		else{
+			/**
+			 * 아무 값도 안 넣으면, rax에 기존 값이 그대로 남아 있어서
+			 * 사용자 프로그램은 write()의 반환값으로 시스템콜 번호 같은 
+			 * 엉뚱한 값을 받기 때문에 성공/실패 유무를 알 수 없고,
+			 * 기존값이 양수라면 성공했다고 오인 가능성이 있음
+			*/
+			 f->R.rax = -1; // 실패시 -1 리턴
 		}
 
-		// 사용한 바이트 수 만큼 리턴
-		f->R.rax = buf_size;
-	} else if(f->R.rax == SYS_EXIT) {
+		
+	} else if(sys_num == SYS_EXIT) {
 		thread_current()->exit_code = arg0;
 		thread_exit();
 	}
