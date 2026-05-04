@@ -4,6 +4,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
+#include "threads/mmu.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
@@ -11,6 +12,7 @@
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+static bool is_valid_user_buffer (const void *buffer, size_t size);
 
 /* System call.
  *
@@ -51,10 +53,22 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	uint64_t arg5 = f->R.r9;
 
 	if(sys_num == SYS_WRITE) {
-		uint64_t fd     = arg0; // File descriptor
-		void *buf       = (void *)arg1; // buffer
+		int fd = (int)arg0; // File descriptor
+		const void *buf       = (void *)arg1; // buffer
 		size_t buf_size = (size_t)arg2; // size
+		// TODO 잘못된 fd가 왔을때 처리 로직
+		if(fd <= 0) {
+			f->R.rax = -1;
+			return;
+		}
+
 		if(fd == 1) {
+			if (!is_valid_user_buffer(buf, buf_size))
+			{
+				thread_current()->exit_code = -1;
+				thread_exit();
+			}
+
 			putbuf(buf, buf_size);
 			// 시스템콜 처리가 끝날 때는 같은 rax를 반환값 저장용으로 사용
 			f->R.rax = buf_size; // 사용한 바이트 수 만큼 리턴
@@ -74,4 +88,35 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		thread_current()->exit_code = arg0;
 		thread_exit();
 	}
+}
+
+static bool is_valid_user_buffer (const void *buffer, size_t size) {
+	if (size == 0) {
+		return true;
+	}
+
+	if (buffer == NULL) {
+		return false;
+	}
+
+	uintptr_t start = (uintptr_t)buffer;
+	uintptr_t end = start + size - 1;
+
+	if (end < start) {
+		return false;
+	}
+
+	if (!is_user_vaddr((const void *)start) || !is_user_vaddr((const void *)end)) {
+		return false;
+	}
+
+	uintptr_t addr = (uintptr_t)pg_round_down((const void *)start);
+	
+	for (; addr <= end; addr += PGSIZE) {
+		if (pml4_get_page(thread_current()->pml4, (const void *)addr) == NULL) {
+			return false;
+		}
+	}
+	
+	return true;
 }
