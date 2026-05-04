@@ -32,6 +32,7 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+static bool get_program_name (const char *cmdline, char *program_name, const size_t size);
 
 /* General process initializer for initd and other process. */
 static void
@@ -58,15 +59,35 @@ process_create_initd (const char *file_name) {
 
 	// 스레드 이름은 args 옵션을 뺀 실제 파일 이름이어야한다.
 	char actual_name[THREAD_NAME_MAX];
-	char *save_ptr;
-	strlcpy(actual_name, file_name, MIN(strlen(file_name) + 1, THREAD_NAME_MAX));
-	strtok_r(actual_name, " ", &save_ptr);
+
+
+	// char *save_ptr;
+	// strlcpy(actual_name, file_name, MIN(strlen(file_name) + 1, THREAD_NAME_MAX));
+	// strtok_r(actual_name, " ", &save_ptr);
+
+	get_program_name(file_name, actual_name, THREAD_NAME_MAX);
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (actual_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
+}
+
+/**
+ * cmdline은 쪼개야할 데이터를 받음
+ * program_name은 결과를 저장할 버퍼를 받음
+ * size는 버퍼 크기
+ * @author minmings111@gmail.com
+ * @date 2026-05-04
+ */
+static bool
+get_program_name (const char *cmdline, char *program_name, const size_t size){
+	char *save_ptr;
+	strlcpy(program_name, cmdline, MIN(strlen(cmdline) + 1, size));
+	strtok_r(program_name, " ", &save_ptr);
+
+	return save_ptr == NULL;
 }
 
 /* A thread function that launches first user process. */
@@ -358,6 +379,11 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	// TODO: file_name bytes 제한
 	// 파일 이름 추출 - malloc
+
+	char file_name_start[THREAD_NAME_MAX];
+	// strlcpy(file_name_start, file_name, file_name_len + 1);
+
+	get_program_name(file_name, file_name_start, THREAD_NAME_MAX);
 	s = malloc(strlen(file_name) + 1);
 	char *save_ptr, *token;
 	if(s == NULL) {
@@ -366,15 +392,14 @@ load (const char *file_name, struct intr_frame *if_) {
 	} 
 	strlcpy(s, file_name, strlen(file_name) + 1);
 	token = strtok_r(s, " ", &save_ptr);
-	char *actual_file_name = token;
-	if(actual_file_name == NULL || strlen(actual_file_name) == 0) {
-		printf("load: actual_file_name is NULL or empty str.\n");
+	if(file_name_start == NULL || strlen(file_name_start) == 0) {
+		printf("load: file_name_start is NULL or empty str.\n");
 		goto done;
 	}
 	token = strtok_r(NULL, " ", &save_ptr);
 
 	/* Open executable file. */
-	file = filesys_open (actual_file_name);
+	file = filesys_open (file_name_start);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
