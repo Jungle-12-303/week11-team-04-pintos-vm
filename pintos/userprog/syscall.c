@@ -4,6 +4,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
+#include "threads/mmu.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
@@ -11,6 +12,7 @@
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+static bool is_valid_user_buffer (const void *buffer, size_t size);
 
 /* System call.
  *
@@ -52,8 +54,16 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 	if(sys_num == SYS_WRITE) {
 		uint64_t fd     = arg0; // File descriptor
-		void *buf       = (void *)arg1; // buffer
+		const void *buf       = (void *)arg1; // buffer
 		size_t buf_size = (size_t)arg2; // size
+
+		if (!is_valid_user_buffer(buf, buf_size))
+		{
+			thread_current()->exit_code = -1;
+			thread_exit();
+		}
+		
+
 		if(fd == 1) {
 			putbuf(buf, buf_size);
 		}
@@ -64,4 +74,33 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		thread_current()->exit_code = arg0;
 		thread_exit();
 	}
+}
+
+static bool is_valid_user_buffer (const void *buffer, size_t size) {
+	if (size == 0) {
+		return true;
+	}
+
+	if (buffer == NULL) {
+		return false;
+	}
+
+	uintptr_t start = (uintptr_t)buffer;
+	uintptr_t end = start + size - 1;
+
+	if (end < start) {
+		return false;
+	}
+
+	if (!is_user_vaddr(start) || !is_user_vaddr(end)) {
+		return false;
+	}
+	
+	for (uintptr_t addr = start; addr <= end; addr = (uintptr_t) pg_round_down((const void *)addr) + PGSIZE) {
+		if (pml4_get_page(thread_current()->pml4, (const void *)addr) == NULL) {
+			return false;
+		}
+	}
+	
+	return true;
 }
