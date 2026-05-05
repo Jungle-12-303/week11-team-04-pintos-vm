@@ -63,13 +63,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	case SYS_WRITE:
 		int fd     = (int)arg0; // File descriptor
 		const void *buf       = (void *)arg1; // buffer
-
 		size_t buf_size = (size_t)arg2; // size
-		// TODO 잘못된 fd가 왔을때 처리 로직
-		if(fd <= 0) {
-			f->R.rax = -1;
-			return;
-		}
 
 		if(fd == 1) {
 			if (!is_valid_user_buffer(buf, buf_size))
@@ -91,9 +85,6 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			*/
 			 f->R.rax = -1; // 실패시 -1 리턴
 		}
-
-		// 사용한 바이트 수 만큼 리턴
-		f->R.rax = buf_size;
 		break;
 	case SYS_CREATE:
 		const char* file      = (const char*)arg0; // file
