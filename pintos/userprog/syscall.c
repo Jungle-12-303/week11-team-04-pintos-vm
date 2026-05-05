@@ -19,6 +19,7 @@ void syscall_exit (const int exit_code);
 static void check_user_addr (const void *addr);
 static void check_user_laddr (const void *buf, const size_t size);
 static bool is_valid_user_buffer (const void *buffer, size_t size);
+static bool check_file_name (const char *s);
 
 /* System call.
  *
@@ -89,7 +90,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	case SYS_CREATE:
 		const char* file      = (const char*)arg0; // file
 		unsigned initial_size = (unsigned)arg1;    // initial_size
-		check_user_laddr(file, NAME_MAX);
+		if (!check_file_name (file)) {
+			f->R.rax = false;
+			break;
+		}
 		bool success = filesys_create(file, initial_size);
 		f->R.rax = success;
 		break;
@@ -113,6 +117,18 @@ syscall_exit (const int exit_code) {
 }
 
 /* static functions */
+
+static bool
+check_file_name (const char *s) {
+    for (int i = 0; i <= NAME_MAX; i++) {
+        check_user_addr (s + i);
+
+        if (s[i] == '\0')
+            return true;
+    }
+
+    return false;
+}
 
 /* 최대 SIZE byte만큼 주소가 유효한지 검사합니다. 여러 페이지에 걸쳐서 
    있을 경우를 검사하기 위해 페이지의 시작 주소가 유효한지 검사합니다. */
