@@ -1,4 +1,5 @@
 #include "userprog/process.h"
+#include "userprog/fd.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -40,6 +41,11 @@ static bool push_stack (struct intr_frame *if_, const void *src, size_t size);
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
+	/* 원래 패닉은 부팅 중 thread_init() 단계에서 malloc()이 palloc lock을 잡으려다가, 
+	   아직 THREAD_RUNNING 상태가 아닌 thread에서 thread_current() 검증에 걸려 발생한 겁니다. 
+	   그래서 fd table 생성 시점을 “thread 구조체 초기화”가 아니라 “유저 프로세스 초기화”로 늦췄습니다. */
+	if (current->fd_table == NULL)
+		current->fd_table = fd_table_init ();
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -274,6 +280,8 @@ process_exit (void) {
 
 	int exit_code = thread_current()->exit_code;
 	printf("%s: exit(%d)\n", thread_name(), exit_code);
+	fd_table_free (curr->fd_table);
+	curr->fd_table = NULL;
 	struct child_status *victim_status = get_child_status(curr->tid);
 	if(victim_status == NULL) {
 		process_cleanup ();

@@ -485,6 +485,7 @@ init_thread(struct thread *t, const char *name, int priority)
     t->magic = THREAD_MAGIC;
     t->original_priority = priority;
     list_init(&t->donations);
+    t->fd_table = NULL;
     t->waiting_lock = NULL;
 }
 

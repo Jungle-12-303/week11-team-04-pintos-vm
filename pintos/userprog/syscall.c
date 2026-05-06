@@ -10,7 +10,10 @@
 #include "intrinsic.h"
 #include "kernel/stdio.h"
 #include "filesys/filesys.h"
+#include "filesys/file.h"
 #include "filesys/directory.h"
+#include "userprog/fd.h"
+#include "threads/malloc.h"
 #include "threads/vaddr.h"
 
 void syscall_entry (void);
@@ -20,6 +23,7 @@ static void check_user_addr (const void *addr);
 static void check_user_laddr (const void *buf, const size_t size);
 static bool is_valid_user_buffer (const void *buffer, size_t size);
 static bool check_file_name (const char *s);
+static int syscall_open (const char *file);
 
 /* System call.
  *
@@ -87,6 +91,9 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			 f->R.rax = -1; // 실패시 -1 리턴
 		}
 		break;
+		case SYS_OPEN:
+			f->R.rax = syscall_open((const char *)arg0);
+			break;
 	case SYS_CREATE:
 		const char* file      = (const char*)arg0; // file
 		unsigned initial_size = (unsigned)arg1;    // initial_size
@@ -104,6 +111,41 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	default:
 		break;
 	}
+}
+
+static int
+syscall_open (const char *file) {
+	if (!check_file_name (file)) {
+		return -1;
+	}
+
+	struct file *opened_file = filesys_open (file);
+	if (opened_file == NULL) {
+		return -1;
+	}
+
+	struct fd_table *fdt = thread_current ()->fd_table;
+	if (fdt == NULL) {
+		file_close (opened_file);
+		return -1;
+	}
+
+	int fd = fd_find_blank (fdt);
+	if (fd < 0) {
+		file_close (opened_file);
+		return -1;
+	}
+
+	struct fd_entry *entry = malloc (sizeof *entry);
+	if (entry == NULL) {
+		file_close (opened_file);
+		return -1;
+	}
+
+	entry->type = FD_FILE;
+	entry->file = opened_file;
+	fdt->fds[fd] = entry;
+	return fd;
 }
 
 /* syscall functions */

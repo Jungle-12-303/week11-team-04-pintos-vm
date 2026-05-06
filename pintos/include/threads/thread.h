@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "userprog/fd.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -95,6 +96,7 @@ struct thread {
 	int64_t wake_tick;
 	struct lock *waiting_lock;
 	struct list donations;
+	struct fd_table *fd_table;
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
