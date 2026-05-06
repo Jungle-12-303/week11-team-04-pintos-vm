@@ -263,6 +263,7 @@ process_wait (tid_t child_tid UNUSED) {
 	if(status->waited) {
 		child_status_sema_down(status);
 		status->waited = false;
+		status->exited = true;
 	} else {
 		return -1;
 	}
