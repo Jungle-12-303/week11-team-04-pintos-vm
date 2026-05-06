@@ -113,6 +113,19 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	}
 }
 
+
+/* syscall functions */
+
+/* EXIT_CODE로 프로세스를 종료합니다. 이후 process_exit()이 호출됩니다. 
+   비정상적인 종료시 EXIT_CODE에 -1를 지정하세요. */
+void
+syscall_exit (const int exit_code) {
+	thread_current()->exit_code = exit_code;
+	thread_exit();
+}
+
+/* static functions */
+
 static int
 syscall_open (const char *file) {
 	if (!check_file_name (file)) {
@@ -147,18 +160,6 @@ syscall_open (const char *file) {
 	fdt->fds[fd] = entry;
 	return fd;
 }
-
-/* syscall functions */
-
-/* EXIT_CODE로 프로세스를 종료합니다. 이후 process_exit()이 호출됩니다. 
-   비정상적인 종료시 EXIT_CODE에 -1를 지정하세요. */
-void
-syscall_exit (const int exit_code) {
-	thread_current()->exit_code = exit_code;
-	thread_exit();
-}
-
-/* static functions */
 
 static bool
 check_file_name (const char *s) {
