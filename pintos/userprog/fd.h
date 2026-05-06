@@ -2,6 +2,7 @@
 #define USERPROG_FD_H
 
 #include <stddef.h>
+#include <stdbool.h>
 
 #define FD_ENTRY_N (1 << 8)
 
@@ -29,5 +30,6 @@ void fd_entry_free (struct fd_table *fdt, size_t index);
 void fd_table_free (struct fd_table *fdt);
 struct fd_entry* fd_get_entry (struct fd_table *fdt, int fd);
 int fd_table_add_file (struct fd_table *fdt, struct file *file);
+bool fd_is_valid (struct fd_table *fdt, int fd);
 
 #endif /* USERPROG_FD_H */
