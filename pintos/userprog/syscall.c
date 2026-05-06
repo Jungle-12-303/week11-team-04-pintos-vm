@@ -15,6 +15,7 @@
 #include "userprog/fd.h"
 #include "threads/malloc.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 #include "threads/init.h"
 
 void syscall_entry (void);
@@ -25,7 +26,9 @@ static void check_user_laddr (const void *buf, const size_t size);
 static bool is_valid_user_buffer (const void *buffer, size_t size);
 static bool check_file_name (const char *s);
 static int syscall_open (const char *file);
-static void syscall_halt ();
+static syscall_write (int fd, const void *buffer, unsigned size);
+static struct lock filesys_lock;
+
 
 /* System call.
  *
@@ -42,6 +45,7 @@ static void syscall_halt ();
 
 void
 syscall_init (void) {
+	lock_init(&filesys_lock);
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
 			((uint64_t)SEL_KCSEG) << 32);
 	write_msr(MSR_LSTAR, (uint64_t) syscall_entry);
@@ -90,7 +94,8 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			 * 엉뚱한 값을 받기 때문에 성공/실패 유무를 알 수 없고,
 			 * 기존값이 양수라면 성공했다고 오인 가능성이 있음
 			*/
-			 f->R.rax = -1; // 실패시 -1 리턴
+			// f->R.rax = -1; // 실패시 -1 리턴
+			f->R.rax = syscall_write((int)arg0, (const char *)arg1, (unsigned)arg2);
 		}
 		break;
 		}
@@ -147,6 +152,28 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 
 /* syscall functions */
+
+int
+syscall_write (int fd, const void *buffer, unsigned size) {
+	struct fd_table *fdt = thread_current ()->fd_table;
+	if (fdt == NULL) { return 0; }
+	struct fd_entry **fds = fdt->fds;
+	if (fds == NULL) { return 0; }
+	if(!fd_is_valid (fdt, fd)) {
+		return 0;
+	}
+	struct fd_entry *fde = *(fds + fd);
+	if (fde == NULL) { return 0; }
+	struct file *opend_file = fde->file;
+	enum fd_type opend_file_type = fde->type;
+	if (opend_file == NULL) { return 0; }
+	check_user_laddr(buffer, size);
+	lock_acquire(&filesys_lock);
+	int byte_written = file_write(opend_file, buffer, size);
+	lock_release(&filesys_lock);
+
+	return byte_written;
+}
 
 /* EXIT_CODE로 프로세스를 종료합니다. 이후 process_exit()이 호출됩니다. 
    비정상적인 종료시 EXIT_CODE에 -1를 지정하세요. */

@@ -136,6 +136,18 @@ fd_get_entry (struct fd_table *fdt, int fd){
     return fde;
 }
 
+/**
+ * fdt의 fd가 유효한지 검사합니다. 유효하지 않으면 false를 반환하고,
+ * 유효하다면 true를 반환합니다.
+ */
+bool
+fd_is_valid (struct fd_table *fdt, int fd) {
+    ASSERT (fdt != NULL);
+    ASSERT (fdt->fds != NULL);
+    if(fd < 0 || fd >= fdt->size) return false;
+    return fdt->fds[fd] != NULL;
+}
+
 
 /**
  * fdt에 비어있는 fd를 찾아서 file entry에 파일 할당하는 함수
