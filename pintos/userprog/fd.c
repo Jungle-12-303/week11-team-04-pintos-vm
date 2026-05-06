@@ -116,3 +116,23 @@ fd_table_free (struct fd_table *fdt) {
     free(fdt->fds);
     free(fdt);
 }
+
+/**
+ * fd_entry를 조회하는 함수
+ */
+struct fd_entry*
+fd_get_entry (struct fd_table *fdt, int fd){
+    if(fdt == NULL){ // 잘못된 테이블을 전달시
+        // 이 함수 자체의 반환값이 "struct fd_entry*"이기 때문에 
+        // 잘못된 경우 -1이 아닌 NULL을 반환
+        return NULL;
+    }
+
+    if(((size_t)fd >= fdt->size) || (fd < 0)){ // 유효한 fd 범위가 아닐때
+        return NULL; 
+    }
+
+    struct fd_entry* fde = fdt->fds[fd];
+    return fde;
+}
+
