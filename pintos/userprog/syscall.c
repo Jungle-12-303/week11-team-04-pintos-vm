@@ -65,7 +65,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 	switch (sys_num)
 	{
-	case SYS_WRITE:
+	case SYS_WRITE:{
 		int fd     = (int)arg0; // File descriptor
 		const void *buf       = (void *)arg1; // buffer
 		size_t buf_size = (size_t)arg2; // size
@@ -91,10 +91,12 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			 f->R.rax = -1; // 실패시 -1 리턴
 		}
 		break;
-		case SYS_OPEN:
-			f->R.rax = syscall_open((const char *)arg0);
-			break;
-	case SYS_CREATE:
+	}
+	case SYS_OPEN:{
+		f->R.rax = syscall_open((const char *)arg0);
+		break;
+	}
+	case SYS_CREATE:{
 		const char* file      = (const char*)arg0; // file
 		unsigned initial_size = (unsigned)arg1;    // initial_size
 		if (!check_file_name (file)) {
@@ -104,12 +106,36 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		bool success = filesys_create(file, initial_size);
 		f->R.rax = success;
 		break;
-	case SYS_EXIT:
+	}
+	case SYS_CLOSE:{
+		int fd = (int)arg0;
+		struct fd_table* curr_th_tb = thread_current()->fd_table;
+		struct fd_entry* fde = fd_get_entry(curr_th_tb, fd);
+
+		// fd가 stdin, stdout, 배열 범위를 벗어날 경우
+		if(fd <= 1){
+			f->R.rax = -1;
+			break;
+		}
+
+		// fd_entry가 NULL일 때
+		if(fde == NULL){
+			f->R.rax = -1;
+			break;
+		}
+
+		fd_entry_free(curr_th_tb , fd);
+		f->R.rax = 0;
+
+		break;
+	}
+	case SYS_EXIT:{
 		syscall_exit(arg0);
 		break;
-	
-	default:
+	}
+	default:{
 		break;
+	}
 	}
 }
 
