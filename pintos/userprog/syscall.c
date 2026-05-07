@@ -17,6 +17,7 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "threads/init.h"
+#include "lib/user/syscall.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -140,6 +141,15 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 		break;
 	}
+	case SYS_FORK:{
+		const char* name      = (const char*)arg0; // name
+		if (!check_file_name (name)) {
+			f->R.rax = false;
+			break;
+		}
+		syscall_fork(name);
+		break;
+	}
 	case SYS_EXIT:{
 		syscall_exit(arg0);
 		break;
@@ -184,6 +194,11 @@ syscall_exit (const int exit_code) {
 }
 
 /* static functions */
+
+static pid_t
+syscall_fork (const char *thread_name) {
+	return -1;
+}
 
 static int
 syscall_open (const char *file) {
