@@ -29,6 +29,7 @@ static bool check_file_name (const char *s);
 static int syscall_open (const char *file);
 static syscall_write (int fd, const void *buffer, unsigned size);
 static struct lock filesys_lock;
+static pid_t syscall_fork (const char *thread_name);
 
 
 /* System call.
