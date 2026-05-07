@@ -82,7 +82,6 @@ main (void) {
 	   then enable console locking. */
 	thread_init ();
 	console_init ();
-	init_process_status_list();
 
 	/* Initialize memory system. */
 	mem_end = palloc_init ();
@@ -90,6 +89,7 @@ main (void) {
 	paging_init (mem_end);
 
 #ifdef USERPROG
+	init_process_status_list();
 	tss_init ();
 	gdt_init ();
 #endif
