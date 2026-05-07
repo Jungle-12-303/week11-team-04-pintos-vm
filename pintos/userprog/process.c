@@ -79,9 +79,7 @@ process_create_initd (const char *file_name) {
 	tid = thread_create (actual_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR) {
 		palloc_free_page (fn_copy);
-	} else {
-		child_status_insert(tid);
-	}
+	} 
 	
 	return tid;
 }
