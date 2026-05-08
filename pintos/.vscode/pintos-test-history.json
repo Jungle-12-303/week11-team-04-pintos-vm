@@ -2,37 +2,47 @@
   "userprog": {
     "tests/userprog/args-none": {
       "count": 2,
-      "last_used": 1778218783.697,
+      "last_used": 1778226579.436,
       "last_action": "run"
     },
     "tests/userprog/read-normal": {
-      "count": 5,
-      "last_used": 1778218989.426,
+      "count": 1,
+      "last_used": 1778226604.766,
       "last_action": "run"
     },
-    "tests/userprog/read-bad-ptr": {
+    "tests/userprog/args-single": {
       "count": 1,
-      "last_used": 1778218989.426,
+      "last_used": 1778250462.973,
       "last_action": "run"
     },
-    "tests/userprog/read-boundary": {
-      "count": 1,
-      "last_used": 1778218989.426,
+    "tests/userprog/fork-once": {
+      "count": 2,
+      "last_used": 1778256648.435,
       "last_action": "run"
     },
-    "tests/userprog/read-zero": {
-      "count": 1,
-      "last_used": 1778218989.426,
+    "tests/userprog/fork-multiple": {
+      "count": 2,
+      "last_used": 1778256648.435,
       "last_action": "run"
     },
-    "tests/userprog/read-stdout": {
-      "count": 1,
-      "last_used": 1778218989.426,
+    "tests/userprog/fork-recursive": {
+      "count": 2,
+      "last_used": 1778256648.435,
       "last_action": "run"
     },
-    "tests/userprog/read-bad-fd": {
-      "count": 1,
-      "last_used": 1778218989.426,
+    "tests/userprog/fork-read": {
+      "count": 6,
+      "last_used": 1778256648.435,
+      "last_action": "run"
+    },
+    "tests/userprog/fork-close": {
+      "count": 2,
+      "last_used": 1778256648.435,
+      "last_action": "run"
+    },
+    "tests/userprog/fork-boundary": {
+      "count": 2,
+      "last_used": 1778256648.435,
       "last_action": "run"
     }
   }

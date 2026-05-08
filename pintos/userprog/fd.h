@@ -25,11 +25,12 @@ struct fd_table {
 };
 
 struct fd_table *fd_table_init (void);
+// int fd_duplicate(struct thread *, struct thread *);
 int fd_find_blank (struct fd_table *fdt);
 void fd_entry_free (struct fd_table *fdt, size_t index);
 void fd_table_free (struct fd_table *fdt);
 struct fd_entry* fd_get_entry (struct fd_table *fdt, int fd);
 int fd_table_add_file (struct fd_table *fdt, struct file *file);
 bool fd_is_valid (struct fd_table *fdt, int fd);
-
+int fd_expaned (struct fd_table *fdt, const size_t new_size);
 #endif /* USERPROG_FD_H */

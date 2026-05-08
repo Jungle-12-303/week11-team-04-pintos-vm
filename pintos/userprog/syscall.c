@@ -20,7 +20,7 @@
 #include "lib/user/syscall.h"
 #include "userprog/process.h"
 #include "userprog/process_child.h"
-
+#include "userprog/fd.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -370,6 +370,46 @@ static bool is_valid_user_buffer (const void *buffer, size_t size) {
 	return true;
 }
 
+int fd_duplicate(struct thread *parent, struct thread *child) {
+    struct fd_table *pfdt = parent->fd_table;
+    child->fd_table = fd_table_init ();
+    struct fd_table *cfdt = child->fd_table;
+    struct fd_entry *pfde=NULL;
+    struct fd_entry *cfde=NULL;
+    for (int fd = 0; fd < pfdt->size; fd++) {
+        if (fd_is_valid(pfdt,fd)) {
+            if (cfdt->size <= fd) {
+                if (fd_expaned(cfdt,cfdt->size<<1) == -1) {
+                    fd_table_free(cfdt);
+                    return 0;
+                }
+            }
+						lock_acquire(&filesys_lock);
+            pfde = pfdt->fds[fd];
+            cfde = malloc(sizeof(struct fd_entry));
+            cfde->type = pfde->type;
+            if (cfde == NULL) {
+								lock_release(&filesys_lock);
+                fd_table_free(cfdt);
+                return 0;
+            }
+            if (cfde->type == FD_STDIN || cfde->type == FD_STDOUT) {
+                cfde->file = NULL;
+            } else {
+                cfde->file = file_reopen(pfde->file);
+                if (cfde->file == NULL) {
+										lock_release(&filesys_lock);
+                    fd_table_free(cfdt);
+                    return 0;
+                }
+                file_seek(cfde->file, file_tell(pfde->file));
+            }
+						lock_release(&filesys_lock);
+            cfdt->fds[fd] = cfde;
+        }
+    }
+    return 1;
+}
 
 int
 syscall_read (int fd, const void *buffer, unsigned size) {

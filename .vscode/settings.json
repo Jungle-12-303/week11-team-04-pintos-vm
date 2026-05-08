@@ -10,7 +10,7 @@
     "editor.stickyScroll.defaultModel": "foldingProviderModel",
     "editor.suggest.insertMode": "replace",
     "editor.defaultFormatter": "ms-vscode.cpptools",
-    "editor.formatOnSave": false
+    "editor.formatOnSave": true
 },
 "[cpp]": {
     "editor.wordBasedSuggestions": "off",
