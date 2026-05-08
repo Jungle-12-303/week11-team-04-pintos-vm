@@ -118,9 +118,19 @@ initd (void *f_name) {
  * TID_ERROR if the thread cannot be created. */
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
+	struct thread *curr = thread_current();
+	// curr->tf = *if_;
 	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+	tid_t tid = thread_create (name, PRI_DEFAULT, __do_fork, if_);
+	if(tid == TID_ERROR) {
+		return TID_ERROR;
+	}
+	struct child_status *cs = get_child_status(tid);
+	sema_down(&cs->fork_sema); /* wait for fork() loaded */
+	if(cs->t->exit_code == -1) {
+		return TID_ERROR;
+	}
+	return tid;
 }
 
 #ifndef VM
@@ -135,16 +145,24 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
+	if(is_kern_pte(pte)) {
+		return true;
+	}
 
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page (parent->pml4, va);
+	if(parent_page == NULL) return false;
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
+	newpage = palloc_get_page(PAL_USER);
+	if(newpage == NULL) return false;
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
+	memcpy(newpage, parent_page, PGSIZE);
+	writable = is_writable(pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
@@ -165,25 +183,16 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 static void
 __do_fork (void *aux) {
 	struct intr_frame if_;
-	struct thread *parent = (struct thread *) aux;
+	struct thread *parent = (struct thread *) pg_round_down(aux);
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	/* TODO: parent_if를 어떻게든 전달해야 함. (예: process_fork()의 if_) */  
-	struct intr_frame *parent_if;
-	// parent_if->rip = parent->tf.rip;
-
-	parent_if->R.rbx = parent->tf.R.rbx;
-	parent_if->rsp = parent->tf.rsp;
-	parent_if->R.rbp = parent->tf.R.rbp;
-	parent_if->R.r12 = parent->tf.R.r12;
-	parent_if->R.r13 = parent->tf.R.r13;
-	parent_if->R.r14 = parent->tf.R.r14;
-	parent_if->R.r15 = parent->tf.R.r15;
+	struct intr_frame *parent_if = (struct thread *) aux;
 
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	if_.R.rax = 0;
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -206,43 +215,16 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-	/* TODO: 여기에 코드를 작성하세요.
-     * TODO: 힌트) 파일 객체를 복제하려면 `file_duplicate`를 사용하세요.
-     * TODO:       (include/filesys/file.h 참조). 이 함수가 부모 프로세스의 리소스를 성공적으로 복제할 때까지 부모 프로세스는 fork()에서 반환되어서는 안 됩니다.
-     * TODO:       */
-
-	// struct file *file_duplicate(struct file *file)
-	
-	// 부모 프로세스의 fd 테이블 
-	struct fd_table *p_fdt = parent -> fd_table;
-	if (p_fdt = NULL)
-		goto error;
-	
-	size_t p_fdt_size = p_fdt->size;
-	struct fd_entry **p_fds = p_fdt->fds;
-
-	if(p_fds == NULL)
-		goto error;
-	
-	// 부모 프로세스의 fd 테이블을 fd 2번부터 마지막까지 순회하면서
-	for(int i = 2; i < (int)p_fdt_size - 1;  i++)
-	{	
-		struct file *p_file = p_fds[i];
-	
-		// 각 fd 에 파일이 있으면 file_duplicate로 복제
-		if(p_file != NULL)
-		{
-			// file_duplicate로 복제된 파일을 부모 fd 테이블과 동일한 fd 인덱스에 넣음 
-			file_duplicate(p_file);
-		}
-	}
 
 	process_init ();
 
 	/* Finally, switch to the newly created process. */
-	if (succ)
+	if (succ) {
+		sema_up(&get_child_status(current->tid)->fork_sema);	
 		do_iret (&if_);
+	}
 error:
+	sema_up(&get_child_status(current->tid)->fork_sema);
 	thread_exit ();
 }
 
