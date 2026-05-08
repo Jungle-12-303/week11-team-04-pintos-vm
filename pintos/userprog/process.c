@@ -25,6 +25,7 @@
 #endif
 #include "threads/synch.h"
 #include "lib/string.h"
+#include "userprog/fd.h"
 
 /* thread.h에 thread name의 버퍼가 16으로 정의되어있습니다. */
 #define THREAD_NAME_MAX 16
@@ -195,6 +196,9 @@ __do_fork (void *aux) {
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
 		goto error;
+	
+	/* 3. Duplicate FD*/
+	fd_duplicate(parent,current);
 
 	process_activate (current);
 #ifdef VM
