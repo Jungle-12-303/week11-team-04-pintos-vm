@@ -178,6 +178,9 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  * Hint) parent->tf does not hold the userland context of the process.
  *       That is, you are required to pass second argument of process_fork to
  *       this function. */
+/* 부모 프로세스의 실행 컨텍스트를 복사하는 스레드 함수입니다.
+ * 힌트) parent->tf에는 프로세스의 사용자 영역 컨텍스트가 저장되어 있지 않습니다.
+ *       즉, process_fork의 두 번째 인수를 이 함수에 전달해야 합니다. */
 static void
 __do_fork (void *aux) {
 	struct intr_frame if_;
@@ -202,6 +205,7 @@ __do_fork (void *aux) {
 
 	process_activate (current);
 #ifdef VM
+	  //(&current->spt);
 	supplemental_page_table_init (&current->spt);
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
 		goto error;
@@ -217,6 +221,7 @@ __do_fork (void *aux) {
 	 * TODO:       the resources of parent.*/
 
 	process_init ();
+
 	/* Finally, switch to the newly created process. */
 	if (succ) {
 		sema_up(&get_child_status(current->tid)->fork_sema);	
