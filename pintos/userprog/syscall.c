@@ -189,17 +189,17 @@ syscall_handler (struct intr_frame *f UNUSED) {
 int
 syscall_write (int fd, const void *buffer, unsigned size) {
 	struct fd_table *fdt = thread_current ()->fd_table;
-	if (fdt == NULL) { return 0; }
+	if (fdt == NULL) { return -1; }
 	struct fd_entry **fds = fdt->fds;
-	if (fds == NULL) { return 0; }
+	if (fds == NULL) { return -1; }
 	if(!fd_is_valid (fdt, fd)) {
-		return 0;
+		return -1;
 	}
 	struct fd_entry *fde = *(fds + fd);
-	if (fde == NULL) { return 0; }
+	if (fde == NULL) { return -1; }
 	struct file *opend_file = fde->file;
 	enum fd_type opend_file_type = fde->type;
-	if (opend_file == NULL) { return 0; }
+	if (opend_file == NULL) { return -1; }
 	check_user_laddr(buffer, size);
 	lock_acquire(&filesys_lock);
 	int byte_written = file_write(opend_file, buffer, size);
@@ -324,23 +324,23 @@ int
 syscall_read (int fd, const void *buffer, unsigned size) {
 	struct fd_table *fdt = thread_current ()->fd_table;
 	if (fdt == NULL) {
-		return 0;
+		return -1;
 	}
 	struct fd_entry **fds = fdt->fds;
 	if (fds == NULL) {
-		return 0;
+		return -1;
 	}
 	if (!fd_is_valid (fdt, fd)) {
-		return 0;
+		return -1;
 	}
 	struct fd_entry *fde = *(fds + fd);
 	if (fde == NULL) {
-		return 0;
+		return -1;
 	}
 	struct file *opend_file = fde->file;
 	enum fd_type opend_file_type = fde->type;
 	if (opend_file == NULL) {
-		return 0;
+		return -1;
 	}
 	check_user_laddr (buffer, size);
 	lock_acquire (&filesys_lock);
@@ -355,11 +355,17 @@ sys_filesize (const int fd) {
 	struct thread *cur = thread_current ();
 	struct fd_table *fdt = cur->fd_table;
 	struct fd_entry *fde;
+	lock_acquire (&filesys_lock);
+	if ((fd < 0) || (fdt == NULL)) {
+		lock_release (&filesys_lock);
+		return -1;
+	}
 	fde = fd_get_entry (fdt, fd);
-	return file_length (fde->file);
-}
-
-int
-sys_fork (char *thread_name) {
-	
+	if (fde == NULL || fde->type != FD_FILE || fde->file == NULL) {
+		lock_release (&filesys_lock);
+		return -1;
+	}
+	int length = file_length (fde->file);
+	lock_release (&filesys_lock);
+	return length;
 }
