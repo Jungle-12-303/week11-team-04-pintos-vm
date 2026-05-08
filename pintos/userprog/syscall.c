@@ -213,8 +213,6 @@ static int
 syscall_wait(pid_t pid) {
 	struct child_status *status = get_child_status(pid);
 
-	printf("pid, tid : %d, %d !!!!!!!!!!!!!!!!!!!!!!!!!!! \n", pid, thread_current()->tid);
-
 	if (status == NULL) { 
 		return -1;
 	} else if(status->exited) {
@@ -222,8 +220,6 @@ syscall_wait(pid_t pid) {
 	}
 	if(status->waited) {
 		child_status_sema_down(status);
-
-		printf("!!!!!!!!!!!!!help\n");
 
 		status->waited = false;
 		status->exited = true;
@@ -238,8 +234,8 @@ syscall_wait(pid_t pid) {
 
 static pid_t
 syscall_fork (const char *thread_name) {
-	struct intr_frame *if_ = &thread_current()->tf;
-
+	check_user_addr(thread_name);
+	struct intr_frame *if_ = pg_round_up(&thread_name) - sizeof(struct intr_frame);
 	return process_fork(thread_name, if_);
 }
 

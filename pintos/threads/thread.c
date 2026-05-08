@@ -13,6 +13,7 @@
 #include "intrinsic.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "userprog/process_child.h"
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -210,7 +211,7 @@ tid_t thread_create(const char *name, int priority,
 
 #ifdef USERPROG
     if (tid != TID_ERROR) {
-		child_status_insert(tid);
+		child_status_insert(tid, t);
 	}
 #endif
 
