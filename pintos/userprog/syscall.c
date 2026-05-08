@@ -152,9 +152,9 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			f->R.rax = false;
 			break;
 		}
-
 		
 		f->R.rax = syscall_fork(name);
+
 		break;
 	}
 	case SYS_WAIT:{
@@ -232,9 +232,6 @@ syscall_wait(pid_t pid) {
 	}
 	return status->exit_code;
 }
-
-
-
 
 static pid_t
 syscall_fork (const char *thread_name) {

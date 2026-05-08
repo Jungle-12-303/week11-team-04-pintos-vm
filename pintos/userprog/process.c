@@ -159,12 +159,16 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  * Hint) parent->tf does not hold the userland context of the process.
  *       That is, you are required to pass second argument of process_fork to
  *       this function. */
+/* 부모 프로세스의 실행 컨텍스트를 복사하는 스레드 함수입니다.
+ * 힌트) parent->tf에는 프로세스의 사용자 영역 컨텍스트가 저장되어 있지 않습니다.
+ *       즉, process_fork의 두 번째 인수를 이 함수에 전달해야 합니다. */
 static void
 __do_fork (void *aux) {
 	struct intr_frame if_;
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
+	/* TODO: parent_if를 어떻게든 전달해야 함. (예: process_fork()의 if_) */  
 	struct intr_frame *parent_if;
 	// parent_if->rip = parent->tf.rip;
 
@@ -188,6 +192,7 @@ __do_fork (void *aux) {
 
 	process_activate (current);
 #ifdef VM
+	  //(&current->spt);
 	supplemental_page_table_init (&current->spt);
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
 		goto error;
@@ -201,6 +206,36 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
+	/* TODO: 여기에 코드를 작성하세요.
+     * TODO: 힌트) 파일 객체를 복제하려면 `file_duplicate`를 사용하세요.
+     * TODO:       (include/filesys/file.h 참조). 이 함수가 부모 프로세스의 리소스를 성공적으로 복제할 때까지 부모 프로세스는 fork()에서 반환되어서는 안 됩니다.
+     * TODO:       */
+
+	// struct file *file_duplicate(struct file *file)
+	
+	// 부모 프로세스의 fd 테이블 
+	struct fd_table *p_fdt = parent -> fd_table;
+	if (p_fdt = NULL)
+		goto error;
+	
+	size_t p_fdt_size = p_fdt->size;
+	struct fd_entry **p_fds = p_fdt->fds;
+
+	if(p_fds == NULL)
+		goto error;
+	
+	// 부모 프로세스의 fd 테이블을 fd 2번부터 마지막까지 순회하면서
+	for(int i = 2; i < (int)p_fdt_size - 1;  i++)
+	{	
+		struct file *p_file = p_fds[i];
+	
+		// 각 fd 에 파일이 있으면 file_duplicate로 복제
+		if(p_file != NULL)
+		{
+			// file_duplicate로 복제된 파일을 부모 fd 테이블과 동일한 fd 인덱스에 넣음 
+			file_duplicate(p_file);
+		}
+	}
 
 	process_init ();
 
