@@ -1,22 +1,18 @@
 {
-"doxdocgen.generic.customTags": [
-    "@author 본인이름",
-    "@date {date}"    
-],
-"files.autoSave": "afterDelay",
-"[c]": {
+  "files.autoSave": "afterDelay",
+  "[c]": {
     "editor.wordBasedSuggestions": "off",
     "editor.semanticHighlighting.enabled": true,
     "editor.stickyScroll.defaultModel": "foldingProviderModel",
     "editor.suggest.insertMode": "replace",
     "editor.defaultFormatter": "ms-vscode.cpptools",
     "editor.formatOnSave": false
-},
-"[cpp]": {
+  },
+  "[cpp]": {
     "editor.wordBasedSuggestions": "off",
     "editor.semanticHighlighting.enabled": true,
     "editor.stickyScroll.defaultModel": "foldingProviderModel",
     "editor.suggest.insertMode": "replace",
     "editor.formatOnSave": false
-},
+  }
 }
