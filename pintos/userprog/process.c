@@ -244,6 +244,7 @@ process_exec (void *f_name) {
 	bool success;
 	tid_t tid;
 	char *fn_copy;
+	
 
 	fn_copy  = palloc_get_page(0);
 	if (fn_copy == NULL) {
@@ -263,14 +264,12 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	/* And then load the binary */
-	
 	success = load (fn_copy, &_if);
+	palloc_free_page (fn_copy);
 
 	/* If load failed, quit. */
-	palloc_free_page (fn_copy);
 	if (!success)
 		return -1;
-
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
@@ -458,7 +457,6 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	char file_name_start[THREAD_NAME_MAX];
 	// strlcpy(file_name_start, file_name, file_name_len + 1);
-
 	get_program_name(file_name, file_name_start, THREAD_NAME_MAX);
 	s = malloc(strlen(file_name) + 1);
 	char *save_ptr, *token;
@@ -476,7 +474,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Open executable file. */
 	file = filesys_open (file_name_start);
-	if (file == NULL) {
+	if ((file == NULL)) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
