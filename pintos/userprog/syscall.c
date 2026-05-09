@@ -479,5 +479,11 @@ sys_filesize (const int fd) {
 
 int
 sys_exec (char *file) {
-	process_exec (file);
+	if(!check_file_name(file)) {
+		return -1;
+	}
+	if (process_exec (file) < 0) {
+		syscall_exit(-1);
+	}
+	NOT_REACHED();
 }

@@ -16,33 +16,33 @@
       "last_action": "run"
     },
     "tests/userprog/fork-once": {
-      "count": 3,
-      "last_used": 1778262885.311,
+      "count": 5,
+      "last_used": 1778309348.753,
       "last_action": "run"
     },
     "tests/userprog/fork-multiple": {
-      "count": 3,
-      "last_used": 1778262885.311,
+      "count": 5,
+      "last_used": 1778309348.753,
       "last_action": "run"
     },
     "tests/userprog/fork-recursive": {
-      "count": 3,
-      "last_used": 1778262885.311,
+      "count": 5,
+      "last_used": 1778309348.753,
       "last_action": "run"
     },
     "tests/userprog/fork-read": {
-      "count": 7,
-      "last_used": 1778262885.311,
+      "count": 9,
+      "last_used": 1778309348.753,
       "last_action": "run"
     },
     "tests/userprog/fork-close": {
-      "count": 3,
-      "last_used": 1778262885.311,
+      "count": 5,
+      "last_used": 1778309348.753,
       "last_action": "run"
     },
     "tests/userprog/fork-boundary": {
-      "count": 3,
-      "last_used": 1778262885.311,
+      "count": 5,
+      "last_used": 1778309348.753,
       "last_action": "run"
     },
     "tests/userprog/no-vm/multi-oom": {
@@ -51,43 +51,53 @@
       "last_action": "run"
     },
     "tests/userprog/exec-arg": {
-      "count": 2,
-      "last_used": 1778293286.544,
+      "count": 4,
+      "last_used": 1778309348.753,
       "last_action": "run"
     },
     "tests/userprog/exec-once": {
-      "count": 1,
-      "last_used": 1778293286.544,
+      "count": 3,
+      "last_used": 1778309348.753,
       "last_action": "run"
     },
     "tests/userprog/exec-boundary": {
-      "count": 1,
-      "last_used": 1778293286.544,
+      "count": 3,
+      "last_used": 1778309348.753,
       "last_action": "run"
     },
     "tests/userprog/exec-missing": {
-      "count": 9,
-      "last_used": 1778294055.81,
-      "last_action": "debug"
+      "count": 18,
+      "last_used": 1778309348.753,
+      "last_action": "run"
     },
     "tests/userprog/exec-bad-ptr": {
-      "count": 1,
-      "last_used": 1778293286.544,
+      "count": 5,
+      "last_used": 1778309348.753,
       "last_action": "run"
     },
     "tests/userprog/exec-read": {
-      "count": 1,
-      "last_used": 1778293286.544,
+      "count": 3,
+      "last_used": 1778309348.753,
       "last_action": "run"
     },
     "tests/userprog/wait-simple": {
-      "count": 1,
-      "last_used": 1778293393.91,
+      "count": 3,
+      "last_used": 1778309348.753,
       "last_action": "run"
     },
     "tests/userprog/wait-twice": {
-      "count": 1,
-      "last_used": 1778293464.908,
+      "count": 3,
+      "last_used": 1778309348.753,
+      "last_action": "run"
+    },
+    "tests/userprog/wait-killed": {
+      "count": 2,
+      "last_used": 1778309348.753,
+      "last_action": "run"
+    },
+    "tests/userprog/wait-bad-pid": {
+      "count": 2,
+      "last_used": 1778309348.753,
       "last_action": "run"
     }
   }
