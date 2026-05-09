@@ -293,7 +293,7 @@ process_exec (void *f_name) {
  *
  * 이 함수는 문제 2-2에서 구현될 예정입니다. 현재로서는
  * 아무 작업도 수행하지 않습니다. */
-// 실제 대기 및 상태 회수 로직은 모두 process_wait()에 구현
+/* 실제 대기 및 상태 회수 로직은 모두 process_wait()에 구현 */
 int
 process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
@@ -301,12 +301,13 @@ process_wait (tid_t child_tid UNUSED) {
 	 * XXX:       implementing the process_wait. */
 
 	struct child_status *status = get_child_status (child_tid);
-	tid_t parent_tid = status->t->parent;
+
 	if (status == NULL) {
 		return -1;
 	} else if (status->exited) {
 		return -1;
 	}
+	tid_t parent_tid = status->parent_id;
 	if (thread_current ()->tid != parent_tid) {
 		return -1;
 	}
@@ -318,41 +319,8 @@ process_wait (tid_t child_tid UNUSED) {
 	} else {
 		return -1;
 	}
-	// PANIC("%d",status->exit_code);
 	process_wait (status->tid);
-	return status->exit_code;
 
-	// 	struct child_status *status = get_child_status(pid);
-	// 	if (status == NULL) {
-	// 		return -1;
-	// 	} else if(status->exited) {
-	// 		return -1;
-	// 	}
-	// 	tid_t parent_tid = status->parent_id;
-	// 	if (thread_current()->tid != parent_tid) {
-	// 		return -1;
-	// 	}
-	// 	if(status->waited) {
-	// 		child_status_sema_down(status);
-
-	// 9억 번 돌면서 프로그램 돌아가게 임시로 해놓음.
-	// while(1) {}
-	// printf("TID: %d\n", child_tid);
-	// TODO: 프로세스 기다리기 구현
-	// for(int i = 0; i < 100000000*9; i++);
-	struct child_status *status = get_child_status (child_tid);
-	if (status == NULL) {
-		return -1;
-	} else if (status->exited) {
-		return -1;
-	}
-	if (status->waited) {
-		child_status_sema_down (status);
-		status->waited = false;
-		status->exited = true;
-	} else {
-		return -1;
-	}
 	return status->exit_code;
 }
 
