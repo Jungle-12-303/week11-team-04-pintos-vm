@@ -34,7 +34,8 @@ static int syscall_open (const char *file);
 static syscall_write (int fd, const void *buffer, unsigned size);
 static struct lock filesys_lock;
 static pid_t syscall_fork (const char *thread_name);
-static int syscall_wait (pid_t pid);
+static int syscall_wait(pid_t pid);
+
 
 /* System call.
  *
@@ -45,22 +46,22 @@ static int syscall_wait (pid_t pid);
  * The syscall instruction works by reading the values from the the Model
  * Specific Register (MSR). For the details, see the manual. */
 
-#define MSR_STAR         0xc0000081 /* Segment selector msr */
-#define MSR_LSTAR        0xc0000082 /* Long mode SYSCALL target */
+#define MSR_STAR 0xc0000081         /* Segment selector msr */
+#define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
 void
 syscall_init (void) {
-	lock_init (&filesys_lock);
-	write_msr (MSR_STAR, ((uint64_t) SEL_UCSEG - 0x10) << 48 |
-	                             ((uint64_t) SEL_KCSEG) << 32);
-	write_msr (MSR_LSTAR, (uint64_t) syscall_entry);
+	lock_init(&filesys_lock);
+	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
+			((uint64_t)SEL_KCSEG) << 32);
+	write_msr(MSR_LSTAR, (uint64_t) syscall_entry);
 
 	/* The interrupt service rountine should not serve any interrupts
 	 * until the syscall_entry swaps the userland stack to the kernel
 	 * mode stack. Therefore, we masked the FLAG_FL. */
-	write_msr (MSR_SYSCALL_MASK,
-	           FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+	write_msr(MSR_SYSCALL_MASK,
+			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 }
 
 /* The main system call interface */
@@ -75,33 +76,36 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	uint64_t arg4 = f->R.r8;
 	uint64_t arg5 = f->R.r9;
 
-	switch (sys_num) {
-	case SYS_WRITE: {
-		int fd = (int) arg0;             // File descriptor
-		const void *buf = (void *) arg1; // buffer
-		size_t buf_size = (size_t) arg2; // size
+	switch (sys_num)
+	{
+	case SYS_WRITE:{
+		int fd     = (int)arg0; // File descriptor
+		const void *buf       = (void *)arg1; // buffer
+		size_t buf_size = (size_t)arg2; // size
 
-		if (fd == 1) {
-			if (!is_valid_user_buffer (buf, buf_size)) {
-				thread_current ()->exit_code = -1;
-				thread_exit ();
+		if(fd == 1) {
+			if (!is_valid_user_buffer(buf, buf_size))
+			{
+				thread_current()->exit_code = -1;
+				thread_exit();
 			}
 
-			putbuf (buf, buf_size);
+			putbuf(buf, buf_size);
 			// 시스템콜 처리가 끝날 때는 같은 rax를 반환값 저장용으로 사용
 			f->R.rax = buf_size; // 사용한 바이트 수 만큼 리턴
-		} else {
+		}
+		else{
 			/**
 			 * 아무 값도 안 넣으면, rax에 기존 값이 그대로 남아 있어서
-			 * 사용자 프로그램은 write()의 반환값으로 시스템콜 번호 같은
+			 * 사용자 프로그램은 write()의 반환값으로 시스템콜 번호 같은 
 			 * 엉뚱한 값을 받기 때문에 성공/실패 유무를 알 수 없고,
 			 * 기존값이 양수라면 성공했다고 오인 가능성이 있음
-			 */
+			*/
 			// f->R.rax = -1; // 실패시 -1 리턴
-			f->R.rax = syscall_write ((int) arg0, (const char *) arg1, (unsigned) arg2);
+			f->R.rax = syscall_write((int)arg0, (const char *)arg1, (unsigned)arg2);
 		}
 		break;
-	}
+		}
 	case SYS_READ: {
 		int fd = (int) arg0;             // File descriptor
 		const void *buf = (void *) arg1; // buffer
@@ -130,67 +134,67 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		}
 		break;
 	}
-	case SYS_OPEN: {
-		f->R.rax = syscall_open ((const char *) arg0);
+	case SYS_OPEN:{
+		f->R.rax = syscall_open((const char *)arg0);
 		break;
 	}
-	case SYS_HALT: {
-		power_off ();
+	case SYS_HALT:{
+		power_off();
 		break;
 	}
-	case SYS_CREATE: {
-		const char *file = (const char *) arg0;  // file
-		unsigned initial_size = (unsigned) arg1; // initial_size
+	case SYS_CREATE:{
+		const char* file      = (const char*)arg0; // file
+		unsigned initial_size = (unsigned)arg1;    // initial_size
 		if (!check_file_name (file)) {
 			f->R.rax = false;
 			break;
 		}
-		bool success = filesys_create (file, initial_size);
+		bool success = filesys_create(file, initial_size);
 		f->R.rax = success;
 		break;
 	}
-	case SYS_CLOSE: {
-		int fd = (int) arg0;
-		struct fd_table *curr_th_tb = thread_current ()->fd_table;
-		struct fd_entry *fde = fd_get_entry (curr_th_tb, fd);
+	case SYS_CLOSE:{
+		int fd = (int)arg0;
+		struct fd_table* curr_th_tb = thread_current()->fd_table;
+		struct fd_entry* fde = fd_get_entry(curr_th_tb, fd);
 
 		// fd가 stdin, stdout, 배열 범위를 벗어날 경우
-		if (fd <= 1) {
+		if(fd <= 1){
 			f->R.rax = -1;
 			break;
 		}
 
 		// fd_entry가 NULL일 때
-		if (fde == NULL) {
+		if(fde == NULL){
 			f->R.rax = -1;
 			break;
 		}
 
-		fd_entry_free (curr_th_tb, fd);
+		fd_entry_free(curr_th_tb , fd);
 		f->R.rax = 0;
 
 		break;
 	}
-	case SYS_FORK: {
-		const char *name = (const char *) arg0; // name
+	case SYS_FORK:{
+		const char* name      = (const char*)arg0; // name
 		if (!check_file_name (name)) {
 			f->R.rax = false;
 			break;
 		}
-
-		f->R.rax = syscall_fork (name);
-
-		break;
-	}
-	case SYS_WAIT: {
-		pid_t pid = (pid_t) arg0;
-
-		f->R.rax = syscall_wait (pid);
+		
+		f->R.rax = syscall_fork(name);
 
 		break;
 	}
-	case SYS_EXIT: {
-		syscall_exit (arg0);
+	case SYS_WAIT:{
+		pid_t pid = (pid_t)arg0;
+
+		f->R.rax = syscall_wait(pid);
+
+		break;
+	}
+	case SYS_EXIT:{
+		syscall_exit(arg0);
 		break;
 	}
 	case SYS_FILESIZE: {
@@ -199,71 +203,64 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		break;
 	}
 	case SYS_EXEC: {
-		f->R.rax = sys_exec ((char *) arg0);
+		f->R.rax = sys_exec((char *) arg0);
 		break;
 	}
-	default: {
+	default:{
 		break;
 	}
 	}
 }
+
 
 /* syscall functions */
 
 int
 syscall_write (int fd, const void *buffer, unsigned size) {
 	struct fd_table *fdt = thread_current ()->fd_table;
-	if (fdt == NULL) {
-		return -1;
-	}
+	if (fdt == NULL) { return -1; }
 	struct fd_entry **fds = fdt->fds;
-	if (fds == NULL) {
-		return -1;
-	}
-	if (!fd_is_valid (fdt, fd)) {
+	if (fds == NULL) { return -1; }
+	if(!fd_is_valid (fdt, fd)) {
 		return -1;
 	}
 	struct fd_entry *fde = *(fds + fd);
-	if (fde == NULL) {
-		return -1;
-	}
+	if (fde == NULL) { return -1; }
 	struct file *opend_file = fde->file;
 	enum fd_type opend_file_type = fde->type;
-	if (opend_file == NULL) {
-		return -1;
-	}
-	check_user_laddr (buffer, size);
-	lock_acquire (&filesys_lock);
-	int byte_written = file_write (opend_file, buffer, size);
-	lock_release (&filesys_lock);
+	if (opend_file == NULL) { return -1; }
+	check_user_laddr(buffer, size);
+	lock_acquire(&filesys_lock);
+	int byte_written = file_write(opend_file, buffer, size);
+	lock_release(&filesys_lock);
 
 	return byte_written;
 }
 
-/* EXIT_CODE로 프로세스를 종료합니다. 이후 process_exit()이 호출됩니다.
+/* EXIT_CODE로 프로세스를 종료합니다. 이후 process_exit()이 호출됩니다. 
    비정상적인 종료시 EXIT_CODE에 -1를 지정하세요. */
 void
 syscall_exit (const int exit_code) {
-	thread_current ()->exit_code = exit_code;
-	thread_exit ();
+	thread_current()->exit_code = exit_code;
+	thread_exit();
 }
 
 /* static functions */
 
 static int
-syscall_wait (pid_t pid) {
-	struct child_status *status = get_child_status (pid);
-	tid_t parent_tid = status->t->parent;
-	if (status == NULL) {
+syscall_wait(pid_t pid) {
+	struct child_status *status = get_child_status(pid);
+	if (status == NULL) { 
 		return -1;
-	} else if (status->exited) {
-		return -1;
-	}
-	if (thread_current ()->tid != parent_tid) {
+	} else if(status->exited) {
 		return -1;
 	}
-	if (status->waited) {
-		child_status_sema_down (status);
+	tid_t parent_tid = status->parent_id;
+	if (thread_current()->tid != parent_tid) {
+		return -1;
+	}
+	if(status->waited) {
+		child_status_sema_down(status);
 
 		status->waited = false;
 		status->exited = true;
@@ -271,15 +268,15 @@ syscall_wait (pid_t pid) {
 		return -1;
 	}
 	// PANIC("%d",status->exit_code);
-	process_wait (status->tid);
+	process_wait(status->tid);
 	return status->exit_code;
 }
 
 static pid_t
 syscall_fork (const char *thread_name) {
-	check_user_addr (thread_name);
-	struct intr_frame *if_ = pg_round_up (&thread_name) - sizeof (struct intr_frame);
-	return process_fork (thread_name, if_);
+	check_user_addr(thread_name);
+	struct intr_frame *if_ = pg_round_up(&thread_name) - sizeof(struct intr_frame);
+	return process_fork(thread_name, if_);
 }
 
 static int
@@ -319,41 +316,39 @@ syscall_open (const char *file) {
 
 static bool
 check_file_name (const char *s) {
-	for (int i = 0; i <= NAME_MAX; i++) {
-		check_user_addr (s + i);
+    for (int i = 0; i <= NAME_MAX; i++) {
+        check_user_addr (s + i);
 
-		if (s[i] == '\0')
-			return true;
-	}
+        if (s[i] == '\0')
+            return true;
+    }
 
-	return false;
+    return false;
 }
 
-/* 최대 SIZE byte만큼 주소가 유효한지 검사합니다. 여러 페이지에 걸쳐서
+/* 최대 SIZE byte만큼 주소가 유효한지 검사합니다. 여러 페이지에 걸쳐서 
    있을 경우를 검사하기 위해 페이지의 시작 주소가 유효한지 검사합니다. */
 static void
 check_user_laddr (const void *buf, const size_t size) {
 	const char *start = buf;
 	const char *end = start + size;
-	if (size == 0)
-		return;
-	for (uint64_t p = pg_round_down (start); p < end; p += PGSIZE) {
-		check_user_addr (p);
+	if(size == 0) return;
+	for(uint64_t p = pg_round_down(start); p < end; p += PGSIZE) {
+		check_user_addr(p);
 	}
-	check_user_addr (end - 1);
+	check_user_addr(end - 1);
 }
 
-/* 포인터가 실제로 접근 가능한지 검사합니다.
+/* 포인터가 실제로 접근 가능한지 검사합니다. 
    실패하면 thread_exit()을 하고 -1을 리턴 합니다. */
 static void
 check_user_addr (const void *addr) {
-	if (addr == NULL || !is_user_vaddr (addr) || pml4_get_page (thread_current ()->pml4, addr) == NULL) {
-		syscall_exit (-1);
+	if(addr == NULL || !is_user_vaddr(addr) || pml4_get_page(thread_current ()->pml4, addr) == NULL) {
+		syscall_exit(-1);
 	}
 }
 
-static bool
-is_valid_user_buffer (const void *buffer, size_t size) {
+static bool is_valid_user_buffer (const void *buffer, size_t size) {
 	if (size == 0) {
 		return true;
 	}
@@ -362,69 +357,69 @@ is_valid_user_buffer (const void *buffer, size_t size) {
 		return false;
 	}
 
-	uintptr_t start = (uintptr_t) buffer;
+	uintptr_t start = (uintptr_t)buffer;
 	uintptr_t end = start + size - 1;
 
+	
 	if (end < start) {
 		return false;
 	}
 
-	if (!is_user_vaddr ((const void *) start) || !is_user_vaddr ((const void *) end)) {
+	if (!is_user_vaddr((const void *)start) || !is_user_vaddr((const void *)end)) {
 		return false;
 	}
 
-	uintptr_t addr = (uintptr_t) pg_round_down ((const void *) start);
-
+	uintptr_t addr = (uintptr_t)pg_round_down((const void *)start);
+	
 	for (; addr <= end; addr += PGSIZE) {
-		if (pml4_get_page (thread_current ()->pml4, (const void *) addr) == NULL) {
+		if (pml4_get_page(thread_current()->pml4, (const void *)addr) == NULL) {
 			return false;
 		}
 	}
-
+	
 	return true;
 }
 
 // 에러 있으면 true 반환 없으면 false 반환
-bool
-fd_duplicate (struct thread *parent, struct thread *child) {
-	struct fd_table *pfdt = parent->fd_table;
-	child->fd_table = fd_table_init ();
-	struct fd_table *cfdt = child->fd_table;
-	struct fd_entry *pfde = NULL;
-	struct fd_entry *cfde = NULL;
-	for (int fd = 0; fd < pfdt->size; fd++) {
-		if (fd_is_valid (pfdt, fd)) {
-			if (cfdt->size <= fd) {
-				if (fd_expaned (cfdt, cfdt->size << 1) == -1) {
-					fd_table_free (cfdt);
-					return true;
-				}
-			}
-			lock_acquire (&filesys_lock);
-			pfde = pfdt->fds[fd];
-			cfde = malloc (sizeof (struct fd_entry));
-			if (cfde == NULL) {
-				lock_release (&filesys_lock);
-				fd_table_free (cfdt);
-				return true;
-			}
-			cfde->type = pfde->type;
-			if (cfde->type == FD_STDIN || cfde->type == FD_STDOUT) {
-				cfde->file = NULL;
-			} else {
-				cfde->file = file_reopen (pfde->file);
-				if (cfde->file == NULL) {
-					lock_release (&filesys_lock);
-					fd_table_free (cfdt);
-					return true;
-				}
-				file_seek (cfde->file, file_tell (pfde->file));
-			}
-			lock_release (&filesys_lock);
-			cfdt->fds[fd] = cfde;
-		}
-	}
-	return false;
+bool fd_duplicate(struct thread *parent, struct thread *child) { 
+    struct fd_table *pfdt = parent->fd_table;
+    child->fd_table = fd_table_init ();
+    struct fd_table *cfdt = child->fd_table;
+    struct fd_entry *pfde=NULL;
+    struct fd_entry *cfde=NULL;
+    for (int fd = 0; fd < pfdt->size; fd++) {
+        if (fd_is_valid(pfdt,fd)) {
+            if (cfdt->size <= fd) {
+                if (fd_expaned(cfdt,cfdt->size<<1) == -1) {
+                    fd_table_free(cfdt);
+                    return true;
+                }
+            }
+						lock_acquire(&filesys_lock);
+            pfde = pfdt->fds[fd];
+            cfde = malloc(sizeof(struct fd_entry));
+            if (cfde == NULL) {
+								lock_release(&filesys_lock);
+                fd_table_free(cfdt);
+                return true;
+            }
+            cfde->type = pfde->type;
+            if (cfde->type == FD_STDIN || cfde->type == FD_STDOUT) {
+                cfde->file = NULL;
+            } else {
+                cfde->file = file_reopen(pfde->file);
+                if (cfde->file == NULL) {
+										lock_release(&filesys_lock);
+                    fd_table_free(cfdt);
+                    return true;
+                }
+                file_seek(cfde->file, file_tell(pfde->file));
+            }
+						lock_release(&filesys_lock);
+            cfdt->fds[fd] = cfde;
+        }
+    }
+    return false;
 }
 
 int
