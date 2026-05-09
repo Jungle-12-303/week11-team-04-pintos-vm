@@ -211,7 +211,7 @@ tid_t thread_create(const char *name, int priority,
 
 #ifdef USERPROG
     if (tid != TID_ERROR) {
-		child_status_insert(tid, t);
+		child_status_insert(tid, thread_current()->tid);
 	}
 #endif
 

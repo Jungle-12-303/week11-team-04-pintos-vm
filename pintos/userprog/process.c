@@ -127,7 +127,7 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	}
 	struct child_status *cs = get_child_status (tid);
 	sema_down (&cs->fork_sema); /* wait for fork() loaded */
-	if (cs->t->exit_code == -1) {
+	if (!cs->fork_success) {
 		return TID_ERROR;
 	}
 	return tid;
@@ -170,6 +170,8 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		palloc_free_page (newpage);
+		return false;
 	}
 	return true;
 }
@@ -185,7 +187,8 @@ __do_fork (void *aux) {
 	struct thread *parent = (struct thread *) pg_round_down (aux);
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if = (struct thread *) aux;
+	struct intr_frame *parent_if = (struct intr_frame *) aux;
+	struct child_status *status = get_child_status (current->tid);
 
 	bool succ = true;
 
@@ -222,11 +225,14 @@ __do_fork (void *aux) {
 	process_init ();
 	/* Finally, switch to the newly created process. */
 	if (succ) {
-		sema_up (&get_child_status (current->tid)->fork_sema);
+		status->fork_success = true;
+		sema_up (&status->fork_sema);
 		do_iret (&if_);
 	}
 error:
-	sema_up (&get_child_status (current->tid)->fork_sema);
+	current->exit_code = -1;
+	status->fork_success = false;
+	sema_up (&status->fork_sema);
 	thread_exit ();
 }
 
@@ -315,6 +321,19 @@ process_wait (tid_t child_tid UNUSED) {
 	// PANIC("%d",status->exit_code);
 	process_wait (status->tid);
 	return status->exit_code;
+
+	// 	struct child_status *status = get_child_status(pid);
+	// 	if (status == NULL) {
+	// 		return -1;
+	// 	} else if(status->exited) {
+	// 		return -1;
+	// 	}
+	// 	tid_t parent_tid = status->parent_id;
+	// 	if (thread_current()->tid != parent_tid) {
+	// 		return -1;
+	// 	}
+	// 	if(status->waited) {
+	// 		child_status_sema_down(status);
 
 	// 9억 번 돌면서 프로그램 돌아가게 임시로 해놓음.
 	// while(1) {}
