@@ -21,6 +21,7 @@
 #include "userprog/process.h"
 #include "userprog/process_child.h"
 #include "userprog/fd.h"
+#include "userprog/process_child.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -201,6 +202,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		f->R.rax = sys_filesize (arg0);
 		break;
 	}
+	case SYS_EXEC: {
+		f->R.rax = sys_exec((char *) arg0);
+		break;
+	}
 	default:{
 		break;
 	}
@@ -245,10 +250,13 @@ syscall_exit (const int exit_code) {
 static int
 syscall_wait(pid_t pid) {
 	struct child_status *status = get_child_status(pid);
-
+	tid_t parent_tid = status->t->parent;
 	if (status == NULL) { 
 		return -1;
 	} else if(status->exited) {
+		return -1;
+	}
+	if (thread_current()->tid != parent_tid) {
 		return -1;
 	}
 	if(status->waited) {
@@ -259,6 +267,8 @@ syscall_wait(pid_t pid) {
 	} else {
 		return -1;
 	}
+	// PANIC("%d",status->exit_code);
+	process_wait(status->tid);
 	return status->exit_code;
 }
 
@@ -370,7 +380,8 @@ static bool is_valid_user_buffer (const void *buffer, size_t size) {
 	return true;
 }
 
-int fd_duplicate(struct thread *parent, struct thread *child) {
+// 에러 있으면 true 반환 없으면 false 반환
+bool fd_duplicate(struct thread *parent, struct thread *child) { 
     struct fd_table *pfdt = parent->fd_table;
     child->fd_table = fd_table_init ();
     struct fd_table *cfdt = child->fd_table;
@@ -381,18 +392,18 @@ int fd_duplicate(struct thread *parent, struct thread *child) {
             if (cfdt->size <= fd) {
                 if (fd_expaned(cfdt,cfdt->size<<1) == -1) {
                     fd_table_free(cfdt);
-                    return 0;
+                    return true;
                 }
             }
 						lock_acquire(&filesys_lock);
             pfde = pfdt->fds[fd];
             cfde = malloc(sizeof(struct fd_entry));
-            cfde->type = pfde->type;
             if (cfde == NULL) {
 								lock_release(&filesys_lock);
                 fd_table_free(cfdt);
-                return 0;
+                return true;
             }
+            cfde->type = pfde->type;
             if (cfde->type == FD_STDIN || cfde->type == FD_STDOUT) {
                 cfde->file = NULL;
             } else {
@@ -400,7 +411,7 @@ int fd_duplicate(struct thread *parent, struct thread *child) {
                 if (cfde->file == NULL) {
 										lock_release(&filesys_lock);
                     fd_table_free(cfdt);
-                    return 0;
+                    return true;
                 }
                 file_seek(cfde->file, file_tell(pfde->file));
             }
@@ -408,7 +419,7 @@ int fd_duplicate(struct thread *parent, struct thread *child) {
             cfdt->fds[fd] = cfde;
         }
     }
-    return 1;
+    return false;
 }
 
 int
@@ -459,4 +470,8 @@ sys_filesize (const int fd) {
 	int length = file_length (fde->file);
 	lock_release (&filesys_lock);
 	return length;
+}
+
+int sys_exec(char * file) {
+	process_exec(file);
 }

@@ -187,18 +187,21 @@ __do_fork (void *aux) {
 	struct intr_frame *parent_if = (struct thread *) aux;
 
 	bool succ = true;
+	
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
 	if_.R.rax = 0;
-
+	current->parent = parent->tid;
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
 		goto error;
 	
 	/* 3. Duplicate FD*/
-	fd_duplicate(parent,current);
+	if (fd_duplicate(parent,current)) {
+		goto error;
+	}
 
 	process_activate (current);
 #ifdef VM
@@ -233,6 +236,14 @@ int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
+	tid_t tid;
+	char *fn_copy;
+
+	fn_copy  = palloc_get_page(0);
+	if (fn_copy == NULL) {
+		return TID_ERROR;
+	}
+	strlcpy(fn_copy, file_name, PGSIZE);
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -246,10 +257,11 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	
+	success = load (fn_copy, &_if);
 
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
+	palloc_free_page (fn_copy);
 	if (!success)
 		return -1;
 
