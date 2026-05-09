@@ -250,12 +250,12 @@ syscall_exit (const int exit_code) {
 static int
 syscall_wait(pid_t pid) {
 	struct child_status *status = get_child_status(pid);
-	tid_t parent_tid = status->t->parent;
 	if (status == NULL) { 
 		return -1;
 	} else if(status->exited) {
 		return -1;
 	}
+	tid_t parent_tid = status->parent_id;
 	if (thread_current()->tid != parent_tid) {
 		return -1;
 	}
