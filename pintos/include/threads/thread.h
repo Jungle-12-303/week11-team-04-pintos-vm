@@ -101,6 +101,7 @@ struct thread {
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 	struct list_elem donation_elem;
+	tid_t parent;
 
 	int exit_code; /* exit code when thread die */
 
