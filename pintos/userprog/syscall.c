@@ -20,21 +20,29 @@
 #include "lib/user/syscall.h"
 #include "userprog/process.h"
 #include "userprog/process_child.h"
-#include "userprog/fd.h"
-#include "userprog/process_child.h"
+#include "threads/pte.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 void syscall_exit (const int exit_code);
 static void check_user_addr (const void *addr);
 static void check_user_laddr (const void *buf, const size_t size);
+static void check_user_waddr (const void *buf, const size_t size);
 static bool is_valid_user_buffer (const void *buffer, size_t size);
 static bool check_file_name (const char *s);
+static struct file *get_file_from_fd (int fd);
 static int syscall_open (const char *file);
-static syscall_write (int fd, const void *buffer, unsigned size);
+static int syscall_write (int fd, const void *buffer, unsigned size);
 static struct lock filesys_lock;
-static pid_t syscall_fork (const char *thread_name);
+static pid_t syscall_fork (const char *thread_name, struct intr_frame *f);
 static int syscall_wait(pid_t pid);
+static bool syscall_remove (const char *file);
+static void syscall_seek (int fd, unsigned position);
+static unsigned syscall_tell (int fd);
+static int syscall_dup2 (int oldfd, int newfd);
+static int syscall_read (int fd, const void *buffer, unsigned size);
+static int sys_filesize (const int fd);
+static int sys_exec (char *file);
 
 
 /* System call.
@@ -83,7 +91,8 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		const void *buf       = (void *)arg1; // buffer
 		size_t buf_size = (size_t)arg2; // size
 
-		if(fd == 1) {
+		struct fd_entry *entry = fd_get_entry (thread_current ()->fd_table, fd);
+		if(fd == 1 && entry != NULL && entry->type == FD_STDOUT) {
 			if (!is_valid_user_buffer(buf, buf_size))
 			{
 				thread_current()->exit_code = -1;
@@ -111,7 +120,8 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		const void *buf = (void *) arg1; // buffer
 		size_t buf_size = (size_t) arg2; // size
 
-		if (fd == 0) {
+		struct fd_entry *entry = fd_get_entry (thread_current ()->fd_table, fd);
+		if (fd == 0 && entry != NULL && entry->type == FD_STDIN) {
 			if (!is_valid_user_buffer (buf, buf_size)) {
 				thread_current ()->exit_code = -1;
 				thread_exit ();
@@ -149,8 +159,14 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			f->R.rax = false;
 			break;
 		}
+		lock_acquire(&filesys_lock);
 		bool success = filesys_create(file, initial_size);
+		lock_release(&filesys_lock);
 		f->R.rax = success;
+		break;
+	}
+	case SYS_REMOVE:{
+		f->R.rax = syscall_remove ((const char *) arg0);
 		break;
 	}
 	case SYS_CLOSE:{
@@ -182,7 +198,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			break;
 		}
 		
-		f->R.rax = syscall_fork(name);
+		f->R.rax = syscall_fork(name, f);
 
 		break;
 	}
@@ -202,8 +218,20 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		f->R.rax = sys_filesize (arg0);
 		break;
 	}
+	case SYS_SEEK: {
+		syscall_seek ((int) arg0, (unsigned) arg1);
+		break;
+	}
+	case SYS_TELL: {
+		f->R.rax = syscall_tell ((int) arg0);
+		break;
+	}
 	case SYS_EXEC: {
 		f->R.rax = sys_exec((char *) arg0);
+		break;
+	}
+	case SYS_DUP2: {
+		f->R.rax = syscall_dup2 ((int) arg0, (int) arg1);
 		break;
 	}
 	default:{
@@ -226,8 +254,12 @@ syscall_write (int fd, const void *buffer, unsigned size) {
 	}
 	struct fd_entry *fde = *(fds + fd);
 	if (fde == NULL) { return -1; }
+	if (fde->type == FD_STDOUT) {
+		check_user_laddr(buffer, size);
+		putbuf(buffer, size);
+		return size;
+	}
 	struct file *opend_file = fde->file;
-	enum fd_type opend_file_type = fde->type;
 	if (opend_file == NULL) { return -1; }
 	check_user_laddr(buffer, size);
 	lock_acquire(&filesys_lock);
@@ -249,34 +281,13 @@ syscall_exit (const int exit_code) {
 
 static int
 syscall_wait(pid_t pid) {
-	struct child_status *status = get_child_status(pid);
-	if (status == NULL) { 
-		return -1;
-	} else if(status->exited) {
-		return -1;
-	}
-	tid_t parent_tid = status->parent_id;
-	if (thread_current()->tid != parent_tid) {
-		return -1;
-	}
-	if(status->waited) {
-		child_status_sema_down(status);
-
-		status->waited = false;
-		status->exited = true;
-	} else {
-		return -1;
-	}
-	// PANIC("%d",status->exit_code);
-	process_wait(status->tid);
-	return status->exit_code;
+	return process_wait (pid);
 }
 
 static pid_t
-syscall_fork (const char *thread_name) {
+syscall_fork (const char *thread_name, struct intr_frame *f) {
 	check_user_addr(thread_name);
-	struct intr_frame *if_ = pg_round_up(&thread_name) - sizeof(struct intr_frame);
-	return process_fork(thread_name, if_);
+	return process_fork(thread_name, f);
 }
 
 static int
@@ -285,7 +296,9 @@ syscall_open (const char *file) {
 		return -1;
 	}
 
+	lock_acquire (&filesys_lock);
 	struct file *opened_file = filesys_open (file);
+	lock_release (&filesys_lock);
 	if (opened_file == NULL) {
 		return -1;
 	}
@@ -310,8 +323,107 @@ syscall_open (const char *file) {
 
 	entry->type = FD_FILE;
 	entry->file = opened_file;
+	entry->ref_count = malloc (sizeof *entry->ref_count);
+	if (entry->ref_count == NULL) {
+		free (entry);
+		file_close (opened_file);
+		return -1;
+	}
+	*entry->ref_count = 1;
 	fdt->fds[fd] = entry;
 	return fd;
+}
+
+static bool
+syscall_remove (const char *file) {
+	if (!check_file_name (file)) {
+		return false;
+	}
+
+	lock_acquire (&filesys_lock);
+	bool success = filesys_remove (file);
+	lock_release (&filesys_lock);
+	return success;
+}
+
+static struct file *
+get_file_from_fd (int fd) {
+	struct fd_table *fdt = thread_current ()->fd_table;
+	struct fd_entry *fde;
+
+	if (fd < 2 || fdt == NULL) {
+		return NULL;
+	}
+	fde = fd_get_entry (fdt, fd);
+	if (fde == NULL || fde->type != FD_FILE) {
+		return NULL;
+	}
+	return fde->file;
+}
+
+static void
+syscall_seek (int fd, unsigned position) {
+	struct file *file = get_file_from_fd (fd);
+	if (file == NULL) {
+		return;
+	}
+
+	lock_acquire (&filesys_lock);
+	file_seek (file, position);
+	lock_release (&filesys_lock);
+}
+
+static unsigned
+syscall_tell (int fd) {
+	struct file *file = get_file_from_fd (fd);
+	if (file == NULL) {
+		return 0;
+	}
+
+	lock_acquire (&filesys_lock);
+	unsigned position = file_tell (file);
+	lock_release (&filesys_lock);
+	return position;
+}
+
+static int
+syscall_dup2 (int oldfd, int newfd) {
+	struct fd_table *fdt = thread_current ()->fd_table;
+	struct fd_entry *old_entry; 
+	struct fd_entry *new_entry;
+
+	if (fdt == NULL || oldfd < 0 || newfd < 0 || !fd_is_valid (fdt, oldfd)) {
+		return -1;
+	}
+	if (oldfd == newfd) {
+		return newfd;
+	}
+	while ((size_t) newfd >= fdt->size) {
+		if (fd_expaned (fdt, fdt->size << 1) < 0) {
+			return -1;
+		}
+	}
+
+	if (fd_is_valid (fdt, newfd)) {
+		fd_entry_free (fdt, newfd);
+	}
+
+	old_entry = fd_get_entry (fdt, oldfd);
+	new_entry = malloc (sizeof *new_entry);
+	if (new_entry == NULL) {
+		return -1;
+	}
+	new_entry->type = old_entry->type;
+	if (old_entry->type == FD_FILE) {
+		new_entry->file = old_entry->file;
+		new_entry->ref_count = old_entry->ref_count;
+		(*new_entry->ref_count)++;
+	} else {
+		new_entry->file = NULL;
+		new_entry->ref_count = NULL;
+	}
+	fdt->fds[newfd] = new_entry;
+	return newfd;
 }
 
 static bool
@@ -337,6 +449,23 @@ check_user_laddr (const void *buf, const size_t size) {
 		check_user_addr(p);
 	}
 	check_user_addr(end - 1);
+}
+
+static void
+check_user_waddr (const void *buf, const size_t size) {
+	const char *start = buf;
+	const char *end = start + size;
+
+	if (size == 0) {
+		return;
+	}
+	check_user_laddr (buf, size);
+	for (uint64_t p = (uint64_t) pg_round_down (start); p < (uint64_t) end; p += PGSIZE) {
+		uint64_t *pte = pml4e_walk (thread_current ()->pml4, p, 0);
+		if (pte == NULL || !(*pte & PTE_W)) {
+			syscall_exit (-1);
+		}
+	}
 }
 
 /* 포인터가 실제로 접근 가능한지 검사합니다. 
@@ -383,46 +512,68 @@ static bool is_valid_user_buffer (const void *buffer, size_t size) {
 // 에러 있으면 true 반환 없으면 false 반환
 bool fd_duplicate(struct thread *parent, struct thread *child) { 
     struct fd_table *pfdt = parent->fd_table;
+    if (pfdt == NULL) {
+        return false;
+    }
     child->fd_table = fd_table_init ();
     struct fd_table *cfdt = child->fd_table;
+    if (cfdt == NULL) {
+        return true;
+    }
     struct fd_entry *pfde=NULL;
     struct fd_entry *cfde=NULL;
-    for (int fd = 0; fd < pfdt->size; fd++) {
+    for (size_t fd = 0; fd < pfdt->size; fd++) {
         if (fd_is_valid(pfdt,fd)) {
             if (cfdt->size <= fd) {
-                if (fd_expaned(cfdt,cfdt->size<<1) == -1) {
-                    fd_table_free(cfdt);
-                    return true;
+                while (cfdt->size <= fd) {
+                    if (fd_expaned(cfdt,cfdt->size<<1) == -1) {
+                        fd_table_free(cfdt);
+                        child->fd_table = NULL;
+                        return true;
+                    }
                 }
             }
-						lock_acquire(&filesys_lock);
+            lock_acquire(&filesys_lock);
             pfde = pfdt->fds[fd];
             cfde = malloc(sizeof(struct fd_entry));
             if (cfde == NULL) {
-								lock_release(&filesys_lock);
+                lock_release(&filesys_lock);
                 fd_table_free(cfdt);
+                child->fd_table = NULL;
                 return true;
             }
             cfde->type = pfde->type;
             if (cfde->type == FD_STDIN || cfde->type == FD_STDOUT) {
                 cfde->file = NULL;
+                cfde->ref_count = NULL;
             } else {
-                cfde->file = file_reopen(pfde->file);
+                cfde->file = file_duplicate(pfde->file);
                 if (cfde->file == NULL) {
-										lock_release(&filesys_lock);
+                    free(cfde);
+                    lock_release(&filesys_lock);
                     fd_table_free(cfdt);
+                    child->fd_table = NULL;
                     return true;
                 }
-                file_seek(cfde->file, file_tell(pfde->file));
+                cfde->ref_count = malloc(sizeof *cfde->ref_count);
+                if (cfde->ref_count == NULL) {
+                    file_close(cfde->file);
+                    free(cfde);
+                    lock_release(&filesys_lock);
+                    fd_table_free(cfdt);
+                    child->fd_table = NULL;
+                    return true;
+                }
+                *cfde->ref_count = 1;
             }
-						lock_release(&filesys_lock);
+            lock_release(&filesys_lock);
             cfdt->fds[fd] = cfde;
         }
     }
     return false;
 }
 
-int
+static int
 syscall_read (int fd, const void *buffer, unsigned size) {
 	struct fd_table *fdt = thread_current ()->fd_table;
 	if (fdt == NULL) {
@@ -439,12 +590,18 @@ syscall_read (int fd, const void *buffer, unsigned size) {
 	if (fde == NULL) {
 		return -1;
 	}
+	if (fde->type == FD_STDIN) {
+		check_user_waddr (buffer, size);
+		for (unsigned i = 0; i < size; i++) {
+			*(((char *) buffer) + i) = input_getc ();
+		}
+		return size;
+	}
 	struct file *opend_file = fde->file;
-	enum fd_type opend_file_type = fde->type;
 	if (opend_file == NULL) {
 		return -1;
 	}
-	check_user_laddr (buffer, size);
+	check_user_waddr (buffer, size);
 	lock_acquire (&filesys_lock);
 	int byte_written = file_read (opend_file, buffer, size);
 	lock_release (&filesys_lock);
@@ -452,7 +609,7 @@ syscall_read (int fd, const void *buffer, unsigned size) {
 	return byte_written;
 }
 
-int
+static int
 sys_filesize (const int fd) {
 	struct thread *cur = thread_current ();
 	struct fd_table *fdt = cur->fd_table;
@@ -472,7 +629,7 @@ sys_filesize (const int fd) {
 	return length;
 }
 
-int
+static int
 sys_exec (char *file) {
 	if(!check_file_name(file)) {
 		return -1;
