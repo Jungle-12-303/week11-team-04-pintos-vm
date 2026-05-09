@@ -307,6 +307,7 @@ process_wait (tid_t child_tid UNUSED) {
 	} else if (status->exited) {
 		return -1;
 	}
+
 	tid_t parent_tid = status->parent_id;
 	if (thread_current ()->tid != parent_tid) {
 		return -1;
@@ -319,7 +320,7 @@ process_wait (tid_t child_tid UNUSED) {
 	} else {
 		return -1;
 	}
-	process_wait (status->tid);
+	// process_wait (status->tid);
 
 	return status->exit_code;
 }
