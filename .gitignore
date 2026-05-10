@@ -31,5 +31,16 @@ core
 
 #extension
 .vscode/pintos-test-history.json
+pintos/.vscode/pintos-test-history.json
 # Annotation (auto-generated)
 .annotation/
+# Pintos Util
+pintos/threads/.test_config
+pintos/threads/select_test.sh
+pintos/threads/.test_status
+pintos/userprog/.test_config
+pintos/userprog/select_test.sh
+pintos/userprog/.test_status
+pintos/vm/.test_config
+pintos/vm/select_test.sh
+pintos/vm/.test_status
