@@ -4,8 +4,9 @@
 #include "filesys/file.h"
 #include <limits.h>
 #include <stdbool.h>
+#include "threads/thread.h"
 
-static int fd_expaned (struct fd_table *fdt, const size_t new_size);
+int fd_expaned (struct fd_table *fdt, const size_t new_size);
 
 struct fd_table *
 fd_table_init (void) {
@@ -65,7 +66,7 @@ fd_find_blank (struct fd_table *fdt) {
 
 /* 사이즈를 NEW_SIZE로 확장합니다. 만약 더 작은 사이즈로 
    expaned하려고 하면, -1를 리턴합니다. */
-static int
+int
 fd_expaned (struct fd_table *fdt, const size_t new_size) {
 
     ASSERT (fdt != NULL);
@@ -175,3 +176,4 @@ fd_table_add_file (struct fd_table *fdt, struct file *file){
 
     return fd;
 }
+

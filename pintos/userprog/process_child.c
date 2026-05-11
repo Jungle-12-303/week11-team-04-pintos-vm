@@ -32,7 +32,7 @@ get_child_status (const tid_t tid) {
    tid를 삽입하려고 하면, false를 리턴합니다. 성공적으로 list에
    삽입되면, true를 리턴합니다. */
 bool 
-child_status_insert (const tid_t tid) {
+child_status_insert (const tid_t tid, const tid_t parent_tid) {
     struct child_status *status = get_child_status(tid);
     if(status == NULL) {
         struct child_status *process = malloc(sizeof(struct child_status)); /* must be free */
@@ -40,10 +40,13 @@ child_status_insert (const tid_t tid) {
             return false;
         } else {
             process->tid = tid;
+            process->parent_id = parent_tid;
             process->exit_code = -1;
+            process->fork_success = false;
             process->exited = false;
             process->waited = true;
             sema_init(&process->wait_sema, 0); /* for process_wait */
+            sema_init(&process->fork_sema, 0);
             list_push_back(&child_status_list, &process->elem);
             return true;
         }

@@ -17,6 +17,11 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "threads/init.h"
+#include "lib/user/syscall.h"
+#include "userprog/process.h"
+#include "userprog/process_child.h"
+#include "userprog/fd.h"
+#include "userprog/process_child.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -28,6 +33,8 @@ static bool check_file_name (const char *s);
 static int syscall_open (const char *file);
 static syscall_write (int fd, const void *buffer, unsigned size);
 static struct lock filesys_lock;
+static pid_t syscall_fork (const char *thread_name);
+static int syscall_wait(pid_t pid);
 
 
 /* System call.
@@ -99,6 +106,34 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		}
 		break;
 		}
+	case SYS_READ: {
+		int fd = (int) arg0;             // File descriptor
+		const void *buf = (void *) arg1; // buffer
+		size_t buf_size = (size_t) arg2; // size
+
+		if (fd == 0) {
+			if (!is_valid_user_buffer (buf, buf_size)) {
+				thread_current ()->exit_code = -1;
+				thread_exit ();
+			}
+			for (int i = 0; i < buf_size; i++) {
+				*(((char *) buf) + i) = input_getc ();
+			}
+
+			// 시스템콜 처리가 끝날 때는 같은 rax를 반환값 저장용으로 사용
+			f->R.rax = buf_size; // 사용한 바이트 수 만큼 리턴
+		} else {
+			/**
+			 * 아무 값도 안 넣으면, rax에 기존 값이 그대로 남아 있어서
+			 * 사용자 프로그램은 write()의 반환값으로 시스템콜 번호 같은
+			 * 엉뚱한 값을 받기 때문에 성공/실패 유무를 알 수 없고,
+			 * 기존값이 양수라면 성공했다고 오인 가능성이 있음
+			 */
+			// f->R.rax = -1; // 실패시 -1 리턴
+			f->R.rax = syscall_read ((int) arg0, (const char *) arg1, (unsigned) arg2);
+		}
+		break;
+	}
 	case SYS_OPEN:{
 		f->R.rax = syscall_open((const char *)arg0);
 		break;
@@ -140,8 +175,35 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 		break;
 	}
+	case SYS_FORK:{
+		const char* name      = (const char*)arg0; // name
+		if (!check_file_name (name)) {
+			f->R.rax = false;
+			break;
+		}
+		
+		f->R.rax = syscall_fork(name);
+
+		break;
+	}
+	case SYS_WAIT:{
+		pid_t pid = (pid_t)arg0;
+
+		f->R.rax = syscall_wait(pid);
+
+		break;
+	}
 	case SYS_EXIT:{
 		syscall_exit(arg0);
+		break;
+	}
+	case SYS_FILESIZE: {
+		// return syscall1 (SYS_FILESIZE, fd)
+		f->R.rax = sys_filesize (arg0);
+		break;
+	}
+	case SYS_EXEC: {
+		f->R.rax = sys_exec((char *) arg0);
 		break;
 	}
 	default:{
@@ -156,17 +218,17 @@ syscall_handler (struct intr_frame *f UNUSED) {
 int
 syscall_write (int fd, const void *buffer, unsigned size) {
 	struct fd_table *fdt = thread_current ()->fd_table;
-	if (fdt == NULL) { return 0; }
+	if (fdt == NULL) { return -1; }
 	struct fd_entry **fds = fdt->fds;
-	if (fds == NULL) { return 0; }
+	if (fds == NULL) { return -1; }
 	if(!fd_is_valid (fdt, fd)) {
-		return 0;
+		return -1;
 	}
 	struct fd_entry *fde = *(fds + fd);
-	if (fde == NULL) { return 0; }
+	if (fde == NULL) { return -1; }
 	struct file *opend_file = fde->file;
 	enum fd_type opend_file_type = fde->type;
-	if (opend_file == NULL) { return 0; }
+	if (opend_file == NULL) { return -1; }
 	check_user_laddr(buffer, size);
 	lock_acquire(&filesys_lock);
 	int byte_written = file_write(opend_file, buffer, size);
@@ -184,6 +246,38 @@ syscall_exit (const int exit_code) {
 }
 
 /* static functions */
+
+static int
+syscall_wait(pid_t pid) {
+	struct child_status *status = get_child_status(pid);
+	if (status == NULL) { 
+		return -1;
+	} else if(status->exited) {
+		return -1;
+	}
+	tid_t parent_tid = status->parent_id;
+	if (thread_current()->tid != parent_tid) {
+		return -1;
+	}
+	if(status->waited) {
+		child_status_sema_down(status);
+
+		status->waited = false;
+		status->exited = true;
+	} else {
+		return -1;
+	}
+	// PANIC("%d",status->exit_code);
+	process_wait(status->tid);
+	return status->exit_code;
+}
+
+static pid_t
+syscall_fork (const char *thread_name) {
+	check_user_addr(thread_name);
+	struct intr_frame *if_ = pg_round_up(&thread_name) - sizeof(struct intr_frame);
+	return process_fork(thread_name, if_);
+}
 
 static int
 syscall_open (const char *file) {
@@ -266,6 +360,7 @@ static bool is_valid_user_buffer (const void *buffer, size_t size) {
 	uintptr_t start = (uintptr_t)buffer;
 	uintptr_t end = start + size - 1;
 
+	
 	if (end < start) {
 		return false;
 	}
@@ -283,4 +378,107 @@ static bool is_valid_user_buffer (const void *buffer, size_t size) {
 	}
 	
 	return true;
+}
+
+// 에러 있으면 true 반환 없으면 false 반환
+bool fd_duplicate(struct thread *parent, struct thread *child) { 
+    struct fd_table *pfdt = parent->fd_table;
+    child->fd_table = fd_table_init ();
+    struct fd_table *cfdt = child->fd_table;
+    struct fd_entry *pfde=NULL;
+    struct fd_entry *cfde=NULL;
+    for (int fd = 0; fd < pfdt->size; fd++) {
+        if (fd_is_valid(pfdt,fd)) {
+            if (cfdt->size <= fd) {
+                if (fd_expaned(cfdt,cfdt->size<<1) == -1) {
+                    fd_table_free(cfdt);
+                    return true;
+                }
+            }
+						lock_acquire(&filesys_lock);
+            pfde = pfdt->fds[fd];
+            cfde = malloc(sizeof(struct fd_entry));
+            if (cfde == NULL) {
+								lock_release(&filesys_lock);
+                fd_table_free(cfdt);
+                return true;
+            }
+            cfde->type = pfde->type;
+            if (cfde->type == FD_STDIN || cfde->type == FD_STDOUT) {
+                cfde->file = NULL;
+            } else {
+                cfde->file = file_reopen(pfde->file);
+                if (cfde->file == NULL) {
+										lock_release(&filesys_lock);
+                    fd_table_free(cfdt);
+                    return true;
+                }
+                file_seek(cfde->file, file_tell(pfde->file));
+            }
+						lock_release(&filesys_lock);
+            cfdt->fds[fd] = cfde;
+        }
+    }
+    return false;
+}
+
+int
+syscall_read (int fd, const void *buffer, unsigned size) {
+	struct fd_table *fdt = thread_current ()->fd_table;
+	if (fdt == NULL) {
+		return -1;
+	}
+	struct fd_entry **fds = fdt->fds;
+	if (fds == NULL) {
+		return -1;
+	}
+	if (!fd_is_valid (fdt, fd)) {
+		return -1;
+	}
+	struct fd_entry *fde = *(fds + fd);
+	if (fde == NULL) {
+		return -1;
+	}
+	struct file *opend_file = fde->file;
+	enum fd_type opend_file_type = fde->type;
+	if (opend_file == NULL) {
+		return -1;
+	}
+	check_user_laddr (buffer, size);
+	lock_acquire (&filesys_lock);
+	int byte_written = file_read (opend_file, buffer, size);
+	lock_release (&filesys_lock);
+
+	return byte_written;
+}
+
+int
+sys_filesize (const int fd) {
+	struct thread *cur = thread_current ();
+	struct fd_table *fdt = cur->fd_table;
+	struct fd_entry *fde;
+	lock_acquire (&filesys_lock);
+	if ((fd < 0) || (fdt == NULL)) {
+		lock_release (&filesys_lock);
+		return -1;
+	}
+	fde = fd_get_entry (fdt, fd);
+	if (fde == NULL || fde->type != FD_FILE || fde->file == NULL) {
+		lock_release (&filesys_lock);
+		return -1;
+	}
+	int length = file_length (fde->file);
+	lock_release (&filesys_lock);
+	return length;
+}
+
+int
+sys_exec (char *file) {
+	if(!check_file_name(file)) {
+		return -1;
+	}
+	if (process_exec (file) < 0) {
+		syscall_exit(-1);
+	}
+	NOT_REACHED();
 }

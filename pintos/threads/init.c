@@ -89,6 +89,7 @@ main (void) {
 	paging_init (mem_end);
 
 #ifdef USERPROG
+	init_process_status_list();
 	tss_init ();
 	gdt_init ();
 #endif
@@ -242,7 +243,6 @@ run_task (char **argv) {
 
 	printf ("Executing '%s':\n", task);
 #ifdef USERPROG
-	init_process_status_list();
 	if (thread_tests){
 		run_test (task);
 	} else {

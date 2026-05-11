@@ -13,6 +13,7 @@
 #include "intrinsic.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "userprog/process_child.h"
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -207,6 +208,12 @@ tid_t thread_create(const char *name, int priority,
     /* Initialize thread. */
     init_thread(t, name, priority);
     tid = t->tid = allocate_tid();
+
+#ifdef USERPROG
+    if (tid != TID_ERROR) {
+		child_status_insert(tid, thread_current()->tid);
+	}
+#endif
 
     /* Call the kernel_thread if it scheduled.
      * Note) rdi is 1st argument, and rsi is 2nd argument. */
