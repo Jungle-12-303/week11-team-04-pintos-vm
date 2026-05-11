@@ -14,6 +14,7 @@
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/mmu.h"
@@ -37,6 +38,11 @@ static void initd (void *f_name);
 static void __do_fork (void *);
 static bool get_program_name (const char *cmdline, char *program_name, const size_t size);
 static bool push_stack (struct intr_frame *if_, const void *src, size_t size);
+
+struct fork_info {
+	struct thread *parent;
+	struct intr_frame if_;
+};
 
 /* General process initializer for initd and other process. */
 static void
@@ -120,10 +126,16 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	struct thread *curr = thread_current();
-	// curr->tf = *if_;
+	struct fork_info *info = malloc (sizeof *info);
+	if (info == NULL) {
+		return TID_ERROR;
+	}
+	info->parent = curr;
+	memcpy (&info->if_, if_, sizeof info->if_);
 	/* Clone current thread to new thread.*/
-	tid_t tid = thread_create (name, PRI_DEFAULT, __do_fork, if_);
+	tid_t tid = thread_create (name, PRI_DEFAULT, __do_fork, info);
 	if(tid == TID_ERROR) {
+		free (info);
 		return TID_ERROR;
 	}
 	struct child_status *cs = get_child_status(tid);
@@ -182,18 +194,18 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  *       this function. */
 static void
 __do_fork (void *aux) {
+	struct fork_info *info = aux;
 	struct intr_frame if_;
-	struct thread *parent = (struct thread *) pg_round_down(aux);
 	struct thread *current = thread_current ();
-	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if = (struct intr_frame *) aux;
+	struct thread *parent = info->parent;
 	struct child_status *status = get_child_status(current->tid);
 
 	bool succ = true;
 	
 
 	/* 1. Read the cpu context to local stack. */
-	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	memcpy (&if_, &info->if_, sizeof (struct intr_frame));
+	free (info);
 	if_.R.rax = 0;
 	current->parent = parent->tid;
 	/* 2. Duplicate PT */
@@ -244,6 +256,7 @@ process_exec (void *f_name) {
 	bool success;
 	tid_t tid;
 	char *fn_copy;
+	struct thread *curr = thread_current ();
 	
 
 	fn_copy  = palloc_get_page(0);
@@ -259,6 +272,11 @@ process_exec (void *f_name) {
 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
+
+	if (curr->exec_file != NULL) {
+		file_close (curr->exec_file);
+		curr->exec_file = NULL;
+	}
 
 	/* We first kill the current context */
 	process_cleanup ();
@@ -298,17 +316,19 @@ process_wait (tid_t child_tid UNUSED) {
 	struct child_status *status = get_child_status(child_tid);
 	if (status == NULL) { 
 		return -1;
-	} else if(status->exited) {
-		return -1;
 	}
+	if (status->parent_id != thread_current ()->tid)
+		return -1;
 	if(status->waited) {
 		child_status_sema_down(status);
 		status->waited = false;
-		status->exited = true;
 	} else {
 		return -1;
 	}
-	return status->exit_code;
+	int exit_code = status->exit_code;
+	list_remove (&status->elem);
+	free (status);
+	return exit_code;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -321,7 +341,13 @@ process_exit (void) {
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
 	int exit_code = thread_current()->exit_code;
-	printf("%s: exit(%d)\n", thread_name(), exit_code);
+	if (curr->pml4 != NULL) {
+		printf("%s: exit(%d)\n", thread_name(), exit_code);
+	}
+	if (curr->exec_file != NULL) {
+		file_close (curr->exec_file);
+		curr->exec_file = NULL;
+	}
 	fd_table_free (curr->fd_table);
 	curr->fd_table = NULL;
 	struct child_status *victim_status = get_child_status(curr->tid);
@@ -330,6 +356,7 @@ process_exit (void) {
 		return;
 	}
 	victim_status->exit_code = exit_code;
+	victim_status->exited = true;
 	child_status_sema_up(victim_status);
 	process_cleanup ();
 }
@@ -478,6 +505,7 @@ load (const char *file_name, struct intr_frame *if_) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
+	file_deny_write (file);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -628,7 +656,11 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	if (success) {
+		t->exec_file = file;
+	} else {
+		file_close (file);
+	}
 	free(s);
 	free(argv_addrs);
 	return success;

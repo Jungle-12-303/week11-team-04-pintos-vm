@@ -12,35 +12,31 @@ struct fd_table *
 fd_table_init (void) {
     struct fd_table *fdt = malloc (sizeof (struct fd_table));
     if (fdt == NULL) {
-        // TODO: calloc 예외처리
-        ASSERT (fdt != NULL);
         return NULL;
     }
     fdt->fds = calloc (FD_ENTRY_N, sizeof (struct fd_entry *));
     if (fdt->fds == NULL) {
-        // TODO: calloc 예외처리
         free(fdt);
-        ASSERT (false);
         return NULL;
     }
     fdt->size = FD_ENTRY_N;
     struct fd_entry *fd_stdin = malloc(sizeof (struct fd_entry));
     struct fd_entry *fd_stdout = malloc(sizeof (struct fd_entry));
     if (fd_stdin == NULL || fd_stdout == NULL) {
-        // TODO: malloc 예외처리
         free(fdt->fds);
         free(fdt);
         free(fd_stdin);
         free(fd_stdout);
-        ASSERT (false);
         return NULL;
     }
 
     fd_stdin->type = FD_STDIN;
     fd_stdin->file = NULL;
+    fd_stdin->ref_count = NULL;
 
     fd_stdout->type = FD_STDOUT;
     fd_stdout->file = NULL;
+    fd_stdout->ref_count = NULL;
 
     fdt->fds[0] = fd_stdin;
     fdt->fds[1] = fd_stdout;
@@ -77,8 +73,6 @@ fd_expaned (struct fd_table *fdt, const size_t new_size) {
         }
         struct fd_entry **tmp = calloc (new_size, sizeof (struct fd_entry *));
         if (tmp == NULL) {
-            // TODO:예외처리
-            ASSERT (tmp != NULL);
             return -1;
         }
         for(size_t i = 0; i < fdt->size; i++) {
@@ -96,8 +90,16 @@ fd_expaned (struct fd_table *fdt, const size_t new_size) {
 
 void
 fd_entry_free (struct fd_table *fdt, size_t index) {
-    // TODO: e 안의 요소 free해야할 것 있으면 하기
-    file_close (fdt->fds[index]->file);
+    struct fd_entry *entry = fdt->fds[index];
+    if (entry->ref_count != NULL) {
+        (*entry->ref_count)--;
+        if (*entry->ref_count == 0) {
+            file_close (entry->file);
+            free (entry->ref_count);
+        }
+    } else {
+        file_close (entry->file);
+    }
     free (fdt->fds[index]);
     fdt->fds[index] = NULL;
 }
@@ -171,9 +173,14 @@ fd_table_add_file (struct fd_table *fdt, struct file *file){
     
     fde->type = FD_FILE; // fd_entry 구조체의 file_type에 파일 타입 넣기
     fde->file = file; // fd_entry 구조체에 파일 주소 넣기
+    fde->ref_count = malloc (sizeof *fde->ref_count);
+    if (fde->ref_count == NULL) {
+        free (fde);
+        return -1;
+    }
+    *fde->ref_count = 1;
 
     fdt->fds[fd] = fde; // fd_table에 fd_entry 주소 넣기
 
     return fd;
 }
-

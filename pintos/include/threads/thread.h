@@ -10,6 +10,8 @@
 #include "vm/vm.h"
 #endif
 
+struct file;
+
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -108,6 +110,7 @@ struct thread {
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
+	struct file *exec_file;            /* Executable file for deny-write */
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
