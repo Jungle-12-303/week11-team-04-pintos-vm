@@ -275,6 +275,21 @@ uint64_t
 hash_int (int i) {
 	return hash_bytes (&i, sizeof i);
 }
+
+// void *va;
+/* Returns a hash of the SIZE bytes in BUF. */
+uint64_t
+hash_addr(const void *va) {
+    uint64_t data = (uint64_t)va;
+    uint64_t hash;
+    ASSERT(data != NULL);
+
+    hash = FNV_64_BASIS;
+		hash = (hash * FNV_64_PRIME) ^ (data);
+
+    return hash;
+}
+
 
 /* Returns the bucket in H that E belongs in. */
 static struct list *
