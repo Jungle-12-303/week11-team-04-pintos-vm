@@ -711,6 +711,32 @@ validate_segment (const struct Phdr *phdr, struct file *file) {
 	return true;
 }
 
+/**
+ * @brief 초기 유저 스택에 SIZE 바이트를 복사한다.
+ * 스택은 아래 방향으로 자라며, setup_stack()이 매핑한 
+ * 한 페이지를 벗어나는 push는 실패 처리한다.
+ * ! project 2 기준으로 스택은 한페이지만 할당 받기 때문에 현재 한페이지만 검증하고 있다.
+ * ! 추후에 스택 구조의 변경이 있으면 해당 헬퍼함수도 변경이 필요할 수 있다.
+ * 
+ * @param if_ 
+ * @param src 
+ * @param size 
+ * @return true 
+ * @return false 
+ * @author hojun-lee99
+ * @date 2026-05-04
+ */
+static bool push_stack (struct intr_frame *if_, const void *src, size_t size) {
+	uint64_t stack_bottom = (uint64_t) USER_STACK - PGSIZE;
+
+	if (if_->rsp < stack_bottom + size)
+		return false;
+
+	if_->rsp -= size;
+	memcpy ((void *) if_->rsp, src, size);
+	return true;
+}
+
 #ifndef VM
 /* Codes of this block will be ONLY USED DURING project 2.
  * If you want to implement the function for whole project 2, implement it
@@ -790,32 +816,6 @@ setup_stack (struct intr_frame *if_) {
 			palloc_free_page (kpage);
 	}
 	return success;
-}
-
-/**
- * @brief 초기 유저 스택에 SIZE 바이트를 복사한다.
- * 스택은 아래 방향으로 자라며, setup_stack()이 매핑한 
- * 한 페이지를 벗어나는 push는 실패 처리한다.
- * ! project 2 기준으로 스택은 한페이지만 할당 받기 때문에 현재 한페이지만 검증하고 있다.
- * ! 추후에 스택 구조의 변경이 있으면 해당 헬퍼함수도 변경이 필요할 수 있다.
- * 
- * @param if_ 
- * @param src 
- * @param size 
- * @return true 
- * @return false 
- * @author hojun-lee99
- * @date 2026-05-04
- */
-static bool push_stack (struct intr_frame *if_, const void *src, size_t size) {
-	uint64_t stack_bottom = (uint64_t) USER_STACK - PGSIZE;
-
-	if (if_->rsp < stack_bottom + size)
-		return false;
-
-	if_->rsp -= size;
-	memcpy ((void *) if_->rsp, src, size);
-	return true;
 }
 
 
