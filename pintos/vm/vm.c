@@ -3,6 +3,8 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "threads/vaddr.h"
+#include <string.h>
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -37,6 +39,49 @@ static struct frame *vm_get_victim (void);
 static bool vm_do_claim_page (struct page *page);
 static struct frame *vm_evict_frame (void);
 
+/**
+ * @brief vm_page_intializer for `vm.h`
+ * @author yoonki1207
+ */
+bool
+vm_page_initializer (struct page *page, enum vm_type type, void *kva) {
+	// TODO: Your code here
+	/*
+	initialize va, frmae, change into anon or file
+	for user? kernel?
+	*/
+	ASSERT (page != NULL) 
+	uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+	if(kpage == NULL) {
+		return false;
+	}
+	switch (type)
+	{
+	case VM_UNINIT:
+		ASSERT (type != VM_UNINIT)
+		return false;
+		break;
+	case VM_ANON:
+		memset(kpage, 0, PGSIZE);
+		break;
+	case VM_FILE:
+		memset(kpage, 0, PGSIZE); // FIXME: do not init in 0s
+		break;
+	
+	default:
+		return false;
+		break;
+	}
+	page->va = ptov(kva); // TODO: make it valid in `thread/vaddr.h`
+	if(page->frame == NULL) {
+		page->frame = malloc (sizeof (struct frame));
+		if(page->frame == NULL) return false;
+		page->frame->kva = kva;
+		page->frame->page = page;
+	}
+	return true;
+}
+
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
  * `vm_alloc_page`. */
@@ -53,8 +98,13 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
+		struct page *page = malloc (sizeof (struct page));
+		uninit_new(page, pg_round_down(upage), init, type, aux, vm_page_initializer);
 
 		/* TODO: Insert the page into the spt. */
+		if(!spt_insert_page(spt, page)) {
+			return false;
+		}
 	}
 err:
 	return false;
