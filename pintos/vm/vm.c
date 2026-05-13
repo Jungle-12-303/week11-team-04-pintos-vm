@@ -183,6 +183,15 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
+	struct thread *curr = thread_current_();
+
+	// 안 해도 되나
+	// uint64_t *pml4;
+
+	// pml4 = palloc_get_page(PAL_USER);
+
+	// curr->pml4 = pml4;
+
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
