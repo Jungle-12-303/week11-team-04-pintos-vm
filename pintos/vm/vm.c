@@ -53,8 +53,12 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
+		/* TODO: 페이지를 생성하고, VM 유형에 따라 초기화 함수를 불러온 다음,
+         * TODO: uninit_new를 호출하여 "uninit" 페이지 구조체를 생성합니다. 
+		 이후에는 uninit_new 호출 후 해당 필드를 수정해야 합니다. */
 
 		/* TODO: Insert the page into the spt. */
+		/* TODO: 이 페이지를 spt에 삽입합니다. */
 	}
 err:
 	return false;
@@ -86,10 +90,77 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 }
 
 /* Get the struct frame, that will be evicted. */
+/* 제거될 struct frame을 가져옵니다. */
 static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
-	 /* TODO: The policy for eviction is up to you. */
+	/* TODO: The policy for eviction is up to you. */
+	/* TODO: 제거 정책은 사용자가 결정합니다. */
+	/* 인자 없음 -> 알아서 접근해서 처리해야 함 
+	Clock 알고리즘(Second Chance)
+	1. 프레임 테이블을 한 바퀴 돈다 -> 프레임 테이블에 등록된 프레임(물리 page)들을 순회 
+		-> OS가 가지고 있는 현재 유저 풀 페이지들이 사용 중인 프레임 목록 => frame table 
+	2. 돌면서 Accessed bit가 1인 프레임이 있으면 값을 0으로 바꿔주고 통과함
+	3. 돌면서 Accessed bit가 0인 프레임이 있으면 victim으로 선정*/
+	
+	uint64_t *pml4;
+
+	// thread_current()->pml4를 기준으로 모든 frame의 f->page->va를 검사
+	// TODO: 페이지를 실제로 매핑한 프로세스의 pml4에서 확인 == 현재 프로세스의 pml4를 확인하는 것이 X 
+	//struct thread *curr = thread_current();
+	//pml4 = curr->pml4;
+
+	if(list_empty(&frame_table))
+		return NULL;
+	
+	struct list_elem *e, *next, *end;
+	struct frame *f;
+
+	e = list_begin(&frame_table);
+
+	next = list_next(e);
+	end = list_end(&frame_table);
+	
+	if(next == end && victim == NULL)
+	{
+		f = list_entry(e, struct frame, elem);
+		
+		/* TODO: 
+		현재 스레드의 pml4가 아닌, accessed bit를 검사할 프레임을 소유하고 있는 스레드의 pml4를 찾아야 함 */
+		struct thread *curr = thread_current();
+		pml4 = curr->pml4;
+
+
+		if((pml4_is_accessed(pml4, f->page->va) == 0)){
+			victim = f;
+			return victim;
+		}
+		else{
+			pml4_set_accessed(pml4, f->page->va, false);
+		}
+	}
+
+	while(e != end){
+		f = list_entry(e, struct frame, elem);
+
+		if(pml4_is_accessed(pml4, f->page->va) == 1){
+			pml4_set_accessed(pml4, f->page->va, false);
+		}			
+		else{
+			victim = f;
+			return victim;
+		}
+			
+		e = list_next(e);
+		if(next != end)
+		{
+			next = list_next(e);
+		}
+		else{				
+			e = list_begin(&frame_table);
+			next = list_next(e);
+		}
+	}
 
 	return victim;
 }

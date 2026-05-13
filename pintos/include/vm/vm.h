@@ -59,10 +59,17 @@ struct page {
 	};
 };
 
+struct list frame_table;
+
 /* The representation of "frame" */
 struct frame {
+	/* 이 프레임의 커널 가상 주소 = 해당 물리 프레임을 커널이 접근하기 위한 주소 
+		 물리 프레임과 1대1 매핑 되어 있음 */
 	void *kva;
+	/* 현재 이 프레임을 사용하는 페이지 */
 	struct page *page;
+
+	struct list_elem elem;
 };
 
 /* The function table for page operations.
