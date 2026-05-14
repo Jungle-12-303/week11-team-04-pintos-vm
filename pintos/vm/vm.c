@@ -176,7 +176,7 @@ vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
 	frame = malloc(sizeof(struct frame));
-	void *kva = palloc_get_page(PAL_ZERO);
+	void *kva = palloc_get_page(PAL_USER | PAL_ZERO);
 	ASSERT (frame != NULL);
 	// ASSERT (frame->page == NULL);
 	frame->kva = kva;
