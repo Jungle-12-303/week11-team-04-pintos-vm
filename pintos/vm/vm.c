@@ -183,17 +183,22 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
-	struct thread *curr = thread_current_();
+	struct thread *curr = thread_current ();
 
-	// 안 해도 되나
-	// uint64_t *pml4;
-
-	// pml4 = palloc_get_page(PAL_USER);
-
-	// curr->pml4 = pml4;
-
-
+	frame = malloc (sizeof (struct frame));
 	ASSERT (frame != NULL);
+
+	frame->kva = palloc_get_page (PAL_USER);
+	frame->page = NULL;
+
+	if (frame->kva == NULL) {
+		free (frame);
+		frame = vm_evict_frame ();
+	} else {
+		list_push_back (&frame_table, &frame->elem);
+		frame->owner_thread = curr;
+	}
+
 	ASSERT (frame->page == NULL);
 	return frame;
 }

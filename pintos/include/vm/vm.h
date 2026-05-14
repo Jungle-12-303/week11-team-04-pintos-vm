@@ -68,7 +68,7 @@ struct frame {
 	void *kva;
 	/* 현재 이 프레임을 사용하는 페이지 */
 	struct page *page;
-
+	struct thread *owner_thread;
 	struct list_elem elem;
 };
 
