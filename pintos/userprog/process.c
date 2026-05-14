@@ -340,7 +340,7 @@ process_exit (void) {
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
-	int exit_code = thread_current()->exit_code;
+	int exit_code = curr->exit_code;
 	if (curr->pml4 != NULL) {
 		printf("%s: exit(%d)\n", thread_name(), exit_code);
 	}
