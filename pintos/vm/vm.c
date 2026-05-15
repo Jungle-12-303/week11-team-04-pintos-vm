@@ -204,25 +204,22 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
 	/* 권한 체크 */
-	if(user && !is_user_vaddr(addr)) {
+	if(addr == NULL || is_kernel_vaddr(addr)) {
 		return false;
 	}
-	struct page *found = spt_find_page(&spt->hash, addr);
-	if(found == NULL) {
-		uint8_t *stk_btm = pg_round_down((uint8_t)f->rsp);
-		if (USER_STACK > (uint8_t)addr &&
-		stk_btm < (uint8_t)addr &&
-		stk_btm + PGSIZE >= (uint8_t)addr) 
-		{
-			vm_stack_growth(addr);
-			return true;
-		} else {
-			return false;
-		}
-			
+	if(!not_present) {
+		return false;
 	}
-
-	return vm_do_claim_page (found);
+	struct page *found = spt_find_page(spt, addr);
+	if(found != NULL) {
+		return vm_do_claim_page(found);
+	}
+	uint64_t *upgae = pg_round_down(addr);
+	if((uint64_t *)addr >=f->rsp - 8 && USER_STACK > (uint64_t *)addr && (uint64_t *)addr >= USER_STACK - (PGSIZE << 8)) {
+		vm_stack_growth(upgae);
+		return true;
+	} 
+	return false;
 }
 
 /* Free the page.
@@ -248,6 +245,10 @@ vm_claim_page (void *va UNUSED) {
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
+
+	if(page == NULL) {
+		return false;
+	}
 
 	/* Set links */
 	frame->page = page;
