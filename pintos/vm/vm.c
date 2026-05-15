@@ -204,7 +204,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
 	/* 권한 체크 */
-	if((uint8_t)addr >= USER_STACK) {
+	if(user && !is_user_vaddr(addr)) {
 		return false;
 	}
 	struct page *found = spt_find_page(&spt->hash, addr);
