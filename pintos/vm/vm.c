@@ -57,7 +57,7 @@ vm_page_initializer (struct page *page, enum vm_type type, void *kva) {
 	ASSERT (page != NULL);
 	struct supplemental_page_table *spt = &thread_current()->spt;
 	
-	switch (type)
+	switch (page_get_type(page))
 	{
 	case VM_UNINIT:
 		ASSERT (type != VM_UNINIT)
@@ -186,10 +186,9 @@ vm_get_frame (void) {
 }
 
 /* Growing the stack. */
-static void
+static bool
 vm_stack_growth (void *addr UNUSED) {
-	vm_alloc_page(VM_ANON | VM_MARKER_0, pg_round_down(addr), true);
-	vm_claim_page(pg_round_down(addr)); 
+	return vm_alloc_page(VM_ANON | VM_MARKER_0, pg_round_down(addr), true) && vm_claim_page(pg_round_down(addr));
 }
 
 /* Handle the fault on write_protected page */
@@ -216,8 +215,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	}
 	uint64_t *upgae = pg_round_down(addr);
 	if((uint64_t *)addr >=f->rsp - 8 && USER_STACK > (uint64_t *)addr && (uint64_t *)addr >= USER_STACK - (PGSIZE << 8)) {
-		vm_stack_growth(upgae);
-		return true;
+		return vm_stack_growth(upgae);
 	} 
 	return false;
 }
@@ -236,7 +234,7 @@ vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: Fill this function */
 	struct supplemental_page_table *spt = &thread_current()->spt;
-	page = spt_find_page(&thread_current()->spt, va);
+	page = spt_find_page(spt, pg_round_down(va));
 	if(page == NULL) return false;
 	return vm_do_claim_page (page);
 }
@@ -244,11 +242,11 @@ vm_claim_page (void *va UNUSED) {
 /* Claim the PAGE and set up the mmu. */
 static bool
 vm_do_claim_page (struct page *page) {
-	struct frame *frame = vm_get_frame ();
 
 	if(page == NULL) {
 		return false;
 	}
+	struct frame *frame = vm_get_frame ();
 
 	/* Set links */
 	frame->page = page;
