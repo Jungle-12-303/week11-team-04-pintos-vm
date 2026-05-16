@@ -57,7 +57,7 @@ vm_page_initializer (struct page *page, enum vm_type type, void *kva) {
 	ASSERT (page != NULL);
 	struct supplemental_page_table *spt = &thread_current()->spt;
 	
-	switch (type)
+	switch (page_get_type(page))
 	{
 	case VM_UNINIT:
 		ASSERT (type != VM_UNINIT)
@@ -92,7 +92,9 @@ vm_page_initializer (struct page *page, enum vm_type type, void *kva) {
 
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
- * `vm_alloc_page`. */
+ * `vm_alloc_page`. 
+ * UPGAE는 pg_roudn_down되어야 합니다.
+ * */
 bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
@@ -184,8 +186,9 @@ vm_get_frame (void) {
 }
 
 /* Growing the stack. */
-static void
+static bool
 vm_stack_growth (void *addr UNUSED) {
+	return vm_alloc_page(VM_ANON | VM_MARKER_0, pg_round_down(addr), true) && vm_claim_page(pg_round_down(addr));
 }
 
 /* Handle the fault on write_protected page */
@@ -199,14 +202,22 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
-	/* TODO: Validate the fault */
-	/* TODO: Your code goes here */
-	// TODO: stack 밑인가? kernel? user?
-	// 밑이면 grow 아니면 프로세스 종료
-	struct page *found = spt_find_page(&spt->hash, addr);
-	if(found == NULL) return false;
-
-	return vm_do_claim_page (found);
+	/* 권한 체크 */
+	if(addr == NULL || is_kernel_vaddr(addr)) {
+		return false;
+	}
+	if(!not_present) {
+		return false;
+	}
+	struct page *found = spt_find_page(spt, addr);
+	if(found != NULL) {
+		return vm_do_claim_page(found);
+	}
+	uint64_t *upgae = pg_round_down(addr);
+	if((uint64_t *)addr >=f->rsp - 8 && USER_STACK > (uint64_t *)addr && (uint64_t *)addr >= USER_STACK - (PGSIZE << 8)) {
+		return vm_stack_growth(upgae);
+	} 
+	return false;
 }
 
 /* Free the page.
@@ -223,7 +234,7 @@ vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: Fill this function */
 	struct supplemental_page_table *spt = &thread_current()->spt;
-	page = spt_find_page(&thread_current()->spt, va);
+	page = spt_find_page(spt, pg_round_down(va));
 	if(page == NULL) return false;
 	return vm_do_claim_page (page);
 }
@@ -231,6 +242,10 @@ vm_claim_page (void *va UNUSED) {
 /* Claim the PAGE and set up the mmu. */
 static bool
 vm_do_claim_page (struct page *page) {
+
+	if(page == NULL) {
+		return false;
+	}
 	struct frame *frame = vm_get_frame ();
 
 	/* Set links */
