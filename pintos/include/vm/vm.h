@@ -51,6 +51,11 @@ struct page {
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
+	/* 각 유형별 데이터가 유니온에 바인딩됩니다.
+     * 각 함수는 현재 유니온을 자동으로 감지합니다 
+	 * 페이지의 종류에 따라 데이터가 들어오는 구조체가 달라짐
+	 * 페이지가 uninit이면 uninit_page에 데이터가 들어옴 
+	 * */
 	union {
 		struct uninit_page uninit;
 		struct anon_page anon;
@@ -78,6 +83,10 @@ struct frame {
  * This is one way of implementing "interface" in C.
  * Put the table of "method" into the struct's member, and
  * call it whenever you needed. */
+/* 페이지 조작을 위한 함수 테이블입니다.
+ * 이것은 C 언어로 "인터페이스"를 구현하는 한 가지 방법입니다.
+ * "메서드" 테이블을 구조체의 멤버에 넣고,
+ * 필요할 때마다 호출하면 됩니다. */    
 struct page_operations {
 	bool (*swap_in) (struct page *, void *);
 	bool (*swap_out) (struct page *);

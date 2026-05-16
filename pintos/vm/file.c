@@ -41,6 +41,7 @@ file_backed_swap_out (struct page *page) {
 }
 
 /* Destory the file backed page. PAGE will be freed by the caller. */
+/* 파일 기반 페이지를 삭제합니다. PAGE는 호출 측에서 해제합니다. */
 static void
 file_backed_destroy (struct page *page) {
 	struct file_page *file_page UNUSED = &page->file;

@@ -9,7 +9,7 @@
 #include <string.h>
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
- * intialize codes. */
+ * intialize codes. */  
 void
 vm_init (void) {
 	vm_anon_init ();
@@ -20,6 +20,7 @@ vm_init (void) {
 	register_inspect_intr ();
 	/* DO NOT MODIFY UPPER LINES. */
 	/* TODO: Your code goes here. */
+	list_init(&frame_table);
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -168,11 +169,6 @@ vm_get_victim (void) {
 	
 	uint64_t *pml4;
 
-	// thread_current()->pml4를 기준으로 모든 frame의 f->page->va를 검사
-	// TODO: 페이지를 실제로 매핑한 프로세스의 pml4에서 확인 == 현재 프로세스의 pml4를 확인하는 것이 X 
-	//struct thread *curr = thread_current();
-	//pml4 = curr->pml4;
-
 	if(list_empty(&frame_table))
 		return NULL;
 	
@@ -188,11 +184,7 @@ vm_get_victim (void) {
 	{
 		f = list_entry(e, struct frame, elem);
 		
-		/* TODO: 
-		현재 스레드의 pml4가 아닌, accessed bit를 검사할 프레임을 소유하고 있는 스레드의 pml4를 찾아야 함 */
-		struct thread *curr = thread_current();
-		pml4 = curr->pml4;
-
+		pml4 = f->owner_thread->pml4;
 
 		if((pml4_is_accessed(pml4, f->page->va) == 0)){
 			victim = f;
@@ -206,6 +198,8 @@ vm_get_victim (void) {
 	while(e != end){
 		f = list_entry(e, struct frame, elem);
 
+		pml4 = f->owner_thread->pml4;
+	
 		if(pml4_is_accessed(pml4, f->page->va) == 1){
 			pml4_set_accessed(pml4, f->page->va, false);
 		}			
@@ -232,12 +226,70 @@ vm_get_victim (void) {
  * Return NULL on error.*/
 /* 한 페이지를 제거하고 해당 프레임을 반환합니다.
  * 오류 발생 시 NULL을 반환합니다.*/
+// ->: 공통 evict 로직 => 페이지 타입 별 작업은 file_backed_destroy에서 작업 
 static struct frame *
 vm_evict_frame (void) {
 	struct frame *victim UNUSED = vm_get_victim ();
 	/* TODO: swap out the victim and return the evicted frame. */
 	/* TODO: 피해 프레임을 교체하고 제거된 프레임을 반환합니다. */
-	return NULL;
+	//victim->page->operations->type;
+	if(victim == NULL){
+		return NULL;
+	}
+
+	// TODO: 1. victim 프레임에 들어있는 페이지의 종류를 확인
+	int type = page_get_type(victim->page);
+	switch (type)
+	{
+	// TODO: 1-1. victim이 uninit 페이지면 그냥 free
+	case VM_UNINIT:
+		// TODO: static 함수라 여기서 못 쓴다고 함 뭐 어떡하라고,어뚝하라고,우뜩하라고, 
+		//file_backed_destroy(victim);
+
+		// 이것도 하지 말라거?
+		//pml4_clear_page(victim->owner_thread->pml4, victim->page->va);
+		// victim 페이지 free
+		//palloc_free_page(victim->kva);
+		// -> 이거 해버리면 이제 victim이라는 값을 사용 못하나>?
+
+		// TODO: 반환하는 victim을 재사용 가능한 빈 프레임 상태로 만들어 야 함 어 케 하 는 건 데 그 걸 
+		// page -> frame, frame->page 연결을 끊어줘야 함
+		// -> 프레임에 들어가있는 kva, 등을 정리해야 함 어케?? init 하면 되나 안된[ ]
+		// initialize PAGE
+		//uninit_new(page, pg_round_down(upage), init, type, aux, vm_page_initializer);
+
+		// 프레임 끊기
+		victim->page->frame = NULL;
+		
+		// 페이지 끊기
+		victim->page = NULL;
+		
+		// thread 끊기 -> 끊기 않고 그냥 frame->page를 새로운 페이지로 할당할 때의 current_thread 를 덮어씌움 
+		//victim->owner_thread = NULL;
+
+		// frame_table에서 빼기... 이건 clock쪽에서 순회할 때 하면 될 듯 -> 프레임 자체를 재사용하는 거라 뺴면 안 됨 
+		// list_
+		break;
+	// TODO: 1-2. victim이 anon 페이지면 swap disk에 페이지 내용 저장해두고 free
+	case VM_ANON:
+		// swap disk에 페이지 내용 저장
+		
+		// 페이지 free
+		break;
+	// TODO: 1-3. victim이 file 페이지면 accessed bit 확인 -> 1이면 원본 파일에 현재 파일 내용 덮어쓰기, 0이면 그냥 free 
+	case VM_FILE:
+		// -> vm_get_victim 안에서 해 주고 있음 
+		// -> 이건 dirty bit로 해야 하네 
+		// victim의 dirty bit 확인해서 1이면 원본에 덮어쓰기 0이면 그냥 프리 
+		int dirty = pml4_is_dirty(victim->owner_thread->pml4, victim->page->va);
+
+		break;
+	default:
+		break;
+	}
+	
+	
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -251,32 +303,34 @@ vm_get_frame (void) {
 	struct frame *victim = NULL;
 	struct thread *curr = thread_current();
 	
-	frame = malloc(sizeof(struct frame));
-	
-	// TODO: page 필드를 초기화하는 코드 필요 
-	
-
 	//void *kva = palloc_get_page(PAL_USER | PAL_ZERO);
 	// palloc_get_page -> 확보한 페이지의 커널 가상 주소를 반환
+	// 프레임의 kva에 넣을 값을 palloc으로 받음
 	frame->kva = palloc_get_page(PAL_USER);
+
+	// TODO: page 필드를 초기화하는 코드 필요  
 	frame->page = NULL;
 
-	// 사용 가능한 페이지 없으면
+	// 사용 가능한 페이지 없으면?? 먼소리지 
+	// 물리 페이지를 받으려고 했는데 실패한 경우 
 	if(frame->kva == NULL){
-		// victim 선정
-		victim = vm_get_victim();
-
-		// eviction
+		// victim 선정 -> evict 안에서 호출함
 		frame = vm_evict_frame();
 
 		// TODO: NULL이면 free할 페이지도 없음 어케 처리할지 다시 고민
 		//palloc_free_page(frame->kva);
+
+		return frame;
+	}	
+	else{
+		// 프레임 구조체를 만듦 -> 빈 프레임 
+		frame = malloc(sizeof(struct frame));
 	}
-	else{	
-		// kva가 반드시 NULL이 아닐 때만 table에 넣기 
-		list_push_back(&frame_table, &frame->elem);
-		frame->owner_thread = curr;
-	}
+
+	// kva가 반드시 NULL이 아닐 때만 table에 넣기 
+	list_push_back(&frame_table, &frame->elem);
+	frame->owner_thread = curr;
+	
 
 	ASSERT (frame != NULL);
 	//frame->kva = kva;
