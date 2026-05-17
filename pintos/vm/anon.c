@@ -101,12 +101,15 @@ anon_swap_out (struct page *page) {
 	size_t start_index = (swap_last_index >= (disk_size(swap_disk) / 8)) ? 0 : swap_last_index;
 	anon_page->swap_slot = bitmap_scan(swap_table,start_index,1,0);
 	if (anon_page->swap_slot == BITMAP_ERROR) {
-		// 다시 찾기
+		// 다시 찾기, 해당 부분때문에 일반적으로 앞에서 1번만 찾는 로직이 2번 찾는 문제가 발생 가능
 		start_index = 0;
 		anon_page->swap_slot = bitmap_scan(swap_table,start_index,1,0);
 	}
 	if (anon_page->swap_slot == BITMAP_ERROR) {
-		// 처음부터 다시 찾았는데도 없으면 오류 리턴
+		/* 처음부터 다시 찾았는데도 없으면 오류 리턴
+		스왑 디스크가 모두 차서 아무것도 찾지 못할 때 false 리턴
+		필요하면 추가 구현 필요
+		*/
 		anon_page->swap_slot = SWAP_SLOT_INVALID;
 		lock_release(&swap_lock);
 		return false;
