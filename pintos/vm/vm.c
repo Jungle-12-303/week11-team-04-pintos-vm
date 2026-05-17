@@ -212,21 +212,28 @@ vm_get_victim (void) {
 			return victim;
 		}
 			
-		e = list_next(e);
+		//e = next;
+		// next가 end가 아닐 때 = next가 마지막 요소가 될 때까지 해당 
 		if(next != end)
 		{
+			// 여기서 e가 마지막 요소가 될 수 있음
+			e = next;
 			next = list_next(e);
 		}
-		else{				
+		// next가 end일 때 = e가 마지막 요소일 떄 
+		else{
 			e = list_begin(&frame_table);
 			next = list_next(e);
 		}
 	}
 
+	ASSERT(victim != NULL);
+
 	return victim;
 }
 
-/* Evict one page and return the corresponding frame.
+ 
+ /* Evict one page and return the corresponding frame.
  * Return NULL on error.*/
 /* 한 페이지를 제거하고 해당 프레임을 반환합니다.
  * 오류 발생 시 NULL을 반환합니다.*/
@@ -241,67 +248,20 @@ vm_evict_frame (void) {
 		return NULL;
 	}
 
-	// TODO: 1. victim 프레임에 들어있는 페이지의 종류를 확인
-	int type = page_get_type(victim->page);
+	// 함수 포인터로 각 페이지 타입에 맞는 swap_out 함수 실행 
+	bool swapped = swap_out(victim->page);
 
-	//victim->page->operations->swap_out(victim->page);
+	ASSERT(swapped);
 
-	//FIXME: 함수 포인터 page_operations 있어서 타입 분기 안 해도 ㄱㅊ음 -> 아닌가? 다시 봐여할듯,......하 
-	switch (type)
-	{
-	// TODO: 1-1. victim이 uninit 페이지면 그냥 free
-	case VM_UNINIT:
-		// TODO: static 함수라 여기서 못 쓴다고 함 뭐 어떡하라고,어뚝하라고,우뜩하라고, 
-		//file_backed_destroy(victim);
-
-		// 이것도 하지 말라거?
-		//pml4_clear_page(victim->owner_thread->pml4, victim->page->va);
-		// victim 페이지 free
-		//palloc_free_page(victim->kva);
-		// -> 이거 해버리면 이제 victim이라는 값을 사용 못하나>?
-
-		// TODO: 반환하는 victim을 재사용 가능한 빈 프레임 상태로 만들어 야 함 어 케 하 는 건 데 그 걸 
-		// page -> frame, frame->page 연결을 끊어줘야 함
-		// -> 프레임에 들어가있는 kva, 등을 정리해야 함 어케?? init 하면 되나 안된[ ]
-		// initialize PAGE
-		//uninit_new(page, pg_round_down(upage), init, type, aux, vm_page_initializer);
-
-		swap_out(victim->page);
-
-		// 현재 오너 스레드의 pml4와 PA 매핑을 끊어줌  
-		pml4_clear_page(victim->owner_thread->pml4, victim->page->va);
+	// 현재 오너 스레드의 pml4와 PA 매핑을 끊어줌  
+	pml4_clear_page(victim->owner_thread->pml4, victim->page->va);
 		
-		// 프레임 끊기
-		victim->page->frame = NULL;
+	// 프레임 끊기	
+	victim->page->frame = NULL;
 		
-		// 페이지 끊기
-		victim->page = NULL;
-		
+	// 페이지 끊기
+	victim->page = NULL;
 
-
-		// thread 끊기 -> 끊기 않고 그냥 frame->page를 새로운 페이지로 할당할 때의 current_thread 를 덮어씌움 
-		//victim->owner_thread = NULL;
-
-		// frame_table에서 빼기... 이건 clock쪽에서 순회할 때 하면 될 듯 -> 프레임 자체를 재사용하는 거라 뺴면 안 됨 
-		// list_
-		break;
-	// TODO: 1-2. victim이 anon 페이지면 swap disk에 페이지 내용 저장해두고 free
-	case VM_ANON:
-		// TODO: swap disk에 페이지 내용 저장
-
-		break;
-	// TODO: 1-3. victim이 file 페이지면 accessed bit 확인 -> 1이면 원본 파일에 현재 파일 내용 덮어쓰기, 0이면 그냥 free 
-	case VM_FILE:
-		// -> vm_get_victim 안에서 해 주고 있음 
-		// -> 이건 dirty bit로 해야 하네 
-		// victim의 dirty bit 확인해서 1이면 원본에 덮어쓰기 0이면 그냥 프리 
-		int dirty = pml4_is_dirty(victim->owner_thread->pml4, victim->page->va);
-
-		break;
-	default:
-		break;
-	}
-	
 	return victim;
 }
 
@@ -319,36 +279,35 @@ vm_get_frame (void) {
 	// 프레임 구조체를 만듦 -> 빈 프레임 
 	frame = malloc(sizeof(struct frame));
 
-	//void *kva = palloc_get_page(PAL_USER | PAL_ZERO);
-	// palloc_get_page -> 확보한 페이지의 커널 가상 주소를 반환
-	// 프레임의 kva에 넣을 값을 palloc으로 받음
-	frame->kva = palloc_get_page(PAL_USER);
+	ASSERT(frame);
 
-	// TODO: page 필드를 초기화하는 코드 필요  
-	frame->page = NULL;
+	// 프레임의 kva에 넣을 페이지를 palloc으로 받음
+	// TODO: palloc으로 할당된 페이지는 쓰레기 값 남아있을 수 있어서 초기화 필요
+	frame->kva = palloc_get_page(PAL_USER|PAL_ZERO);
+	//memset(frame->kva, 0, PGSIZE);
 
 	// 사용 가능한 페이지 없으면
-	// 물리 페이지를 받으려고 했는데 실패한 경우 
+	// = 물리 페이지를 받으려고 했는데 실패한 경우 
 	if(frame->kva == NULL){
+		// vm_evict_frame으로 반환되는 frame은 이미 malloc 되어있는 프레임이라
+		// 위에서 malloc한 frame을 free 해줘야 누수 안 생김 
+		free(frame);
+		
 		// victim 선정 -> evict 안에서 호출함
 		frame = vm_evict_frame();
-		
-		// vm_evict_frame 실패하면 맨 아래에서 PANIC 
-		//return frame;
+
+		ASSERT(frame);
 	}
-	// else{
-	// 	// kva가 반드시 NULL이 아닐 때만 table에 넣기 
-	// 	// evict 해서 얻은 프레임은 이미 프레임 테이블 안에 있는 프레임이라 반드시 else로 테이블에 없는 프레임만 테이블에 넣어야 함
-	// 	// TODO: evict 된 프레임은 원래 프레임 테이블에 있던 애라 다시 넣어주면안됨 흠냐 
-	// 	//list_push_back(&frame_table, &frame->elem);
-	// 	//frame->owner_thread = curr;
-	// }
-	
+	else{	
+		// kva가 반드시 NULL이 아닐 때만 table에 넣기 
+		// evict 된 프레임은 원래 프레임 테이블에 있는 상태 그대로라 테이블에 다시 넣어주면 안 됨
+		list_push_back(&frame_table, &frame->elem);
+		frame->owner_thread = curr;
+	}
+
 	// TODO: 예외 처리 명세 충족 X
 	// 회수 로직 추가 필요 
 	ASSERT (frame != NULL);
-	//frame->kva = kva;
-	//ASSERT (frame->page == NULL);
 
 	return frame;
 }
