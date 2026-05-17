@@ -66,7 +66,7 @@ struct page {
 	};
 };
 
-struct list frame_table;
+ extern struct list frame_table;
 
 /* The representation of "frame" */
 struct frame {

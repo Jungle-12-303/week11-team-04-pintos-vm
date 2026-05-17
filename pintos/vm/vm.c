@@ -8,6 +8,8 @@
 #include "threads/thread.h"
 #include <string.h>
 
+struct list frame_table;
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */  
 void
@@ -241,6 +243,10 @@ vm_evict_frame (void) {
 
 	// TODO: 1. victim 프레임에 들어있는 페이지의 종류를 확인
 	int type = page_get_type(victim->page);
+
+	//victim->page->operations->swap_out(victim->page);
+
+	//FIXME: 함수 포인터 page_operations 있어서 타입 분기 안 해도 ㄱㅊ음 -> 아닌가? 다시 봐여할듯,......하 
 	switch (type)
 	{
 	// TODO: 1-1. victim이 uninit 페이지면 그냥 free
@@ -260,12 +266,19 @@ vm_evict_frame (void) {
 		// initialize PAGE
 		//uninit_new(page, pg_round_down(upage), init, type, aux, vm_page_initializer);
 
+		swap_out(victim->page);
+
+		// 현재 오너 스레드의 pml4와 PA 매핑을 끊어줌  
+		pml4_clear_page(victim->owner_thread->pml4, victim->page->va);
+		
 		// 프레임 끊기
 		victim->page->frame = NULL;
 		
 		// 페이지 끊기
 		victim->page = NULL;
 		
+
+
 		// thread 끊기 -> 끊기 않고 그냥 frame->page를 새로운 페이지로 할당할 때의 current_thread 를 덮어씌움 
 		//victim->owner_thread = NULL;
 
@@ -274,9 +287,8 @@ vm_evict_frame (void) {
 		break;
 	// TODO: 1-2. victim이 anon 페이지면 swap disk에 페이지 내용 저장해두고 free
 	case VM_ANON:
-		// swap disk에 페이지 내용 저장
-		
-		// 페이지 free
+		// TODO: swap disk에 페이지 내용 저장
+
 		break;
 	// TODO: 1-3. victim이 file 페이지면 accessed bit 확인 -> 1이면 원본 파일에 현재 파일 내용 덮어쓰기, 0이면 그냥 free 
 	case VM_FILE:
@@ -289,7 +301,6 @@ vm_evict_frame (void) {
 	default:
 		break;
 	}
-	
 	
 	return victim;
 }
@@ -305,6 +316,9 @@ vm_get_frame (void) {
 	struct frame *victim = NULL;
 	struct thread *curr = thread_current();
 	
+	// 프레임 구조체를 만듦 -> 빈 프레임 
+	frame = malloc(sizeof(struct frame));
+
 	//void *kva = palloc_get_page(PAL_USER | PAL_ZERO);
 	// palloc_get_page -> 확보한 페이지의 커널 가상 주소를 반환
 	// 프레임의 kva에 넣을 값을 palloc으로 받음
@@ -313,27 +327,25 @@ vm_get_frame (void) {
 	// TODO: page 필드를 초기화하는 코드 필요  
 	frame->page = NULL;
 
-	// 사용 가능한 페이지 없으면?? 먼소리지 
+	// 사용 가능한 페이지 없으면
 	// 물리 페이지를 받으려고 했는데 실패한 경우 
 	if(frame->kva == NULL){
 		// victim 선정 -> evict 안에서 호출함
 		frame = vm_evict_frame();
-
-		// TODO: NULL이면 free할 페이지도 없음 어케 처리할지 다시 고민
-		//palloc_free_page(frame->kva);
-
-		return frame;
-	}	
-	else{
-		// 프레임 구조체를 만듦 -> 빈 프레임 
-		frame = malloc(sizeof(struct frame));
+		
+		// vm_evict_frame 실패하면 맨 아래에서 PANIC 
+		//return frame;
 	}
-
-	// kva가 반드시 NULL이 아닐 때만 table에 넣기 
-	list_push_back(&frame_table, &frame->elem);
-	frame->owner_thread = curr;
+	// else{
+	// 	// kva가 반드시 NULL이 아닐 때만 table에 넣기 
+	// 	// evict 해서 얻은 프레임은 이미 프레임 테이블 안에 있는 프레임이라 반드시 else로 테이블에 없는 프레임만 테이블에 넣어야 함
+	// 	// TODO: evict 된 프레임은 원래 프레임 테이블에 있던 애라 다시 넣어주면안됨 흠냐 
+	// 	//list_push_back(&frame_table, &frame->elem);
+	// 	//frame->owner_thread = curr;
+	// }
 	
-
+	// TODO: 예외 처리 명세 충족 X
+	// 회수 로직 추가 필요 
 	ASSERT (frame != NULL);
 	//frame->kva = kva;
 	//ASSERT (frame->page == NULL);
@@ -403,12 +415,14 @@ vm_do_claim_page (struct page *page) {
 		return false;
 	}
 	struct frame *frame = vm_get_frame ();
-
+	struct thread *curr = thread_current();
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
+	frame->owner_thread = curr;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+	/* TODO: 페이지의 가상 주소(VA)를 프레임의 물리 주소(PA)에 매핑하는 페이지 테이블 항목을 삽입합니다. */
 	if(!pml4_set_page(thread_current()->pml4, page->va, frame->kva, true)) {
 		printf("vm_do_claim_page(): pml4_set_page failed\n");
 		return false;
