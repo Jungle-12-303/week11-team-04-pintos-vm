@@ -24,25 +24,28 @@
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
-void syscall_exit (const int exit_code);
+
 static void check_user_addr (const void *addr);
 static void check_user_laddr (const void *buf, const size_t size);
 static void check_user_waddr (const void *buf, const size_t size);
 static bool is_valid_user_buffer (const void *buffer, size_t size);
 static bool check_file_name (const char *s);
 static struct file *get_file_from_fd (int fd);
-static int syscall_open (const char *file);
-static int syscall_write (int fd, const void *buffer, unsigned size);
+
 static struct lock filesys_lock;
-static pid_t syscall_fork (const char *thread_name, struct intr_frame *f);
-static int syscall_wait(pid_t pid);
-static bool syscall_remove (const char *file);
-static void syscall_seek (int fd, unsigned position);
+
+static void 	syscall_exit (const int exit_code);
+static int 		syscall_open (const char *file);
+static int 		syscall_write (int fd, const void *buffer, unsigned size);
+static pid_t 	syscall_fork (const char *thread_name, struct intr_frame *f);
+static int 		syscall_wait(pid_t pid);
+static bool 	syscall_remove (const char *file);
+static void 	syscall_seek (int fd, unsigned position);
 static unsigned syscall_tell (int fd);
-static int syscall_dup2 (int oldfd, int newfd);
-static int syscall_read (int fd, const void *buffer, unsigned size);
-static int sys_filesize (const int fd);
-static int sys_exec (char *file);
+static int 		syscall_dup2 (int oldfd, int newfd);
+static int 		syscall_read (int fd, const void *buffer, unsigned size);
+static int 		syscall_filesize (const int fd);
+static int 		syscall_exec (char *file);
 
 
 /* System call.
@@ -215,7 +218,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	}
 	case SYS_FILESIZE: {
 		// return syscall1 (SYS_FILESIZE, fd)
-		f->R.rax = sys_filesize (arg0);
+		f->R.rax = syscall_filesize (arg0);
 		break;
 	}
 	case SYS_SEEK: {
@@ -227,7 +230,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		break;
 	}
 	case SYS_EXEC: {
-		f->R.rax = sys_exec((char *) arg0);
+		f->R.rax = syscall_exec((char *) arg0);
 		break;
 	}
 	case SYS_DUP2: {
@@ -238,112 +241,6 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		break;
 	}
 	}
-}
-
-
-/* syscall functions */
-
-int
-syscall_write (int fd, const void *buffer, unsigned size) {
-	struct fd_table *fdt = thread_current ()->fd_table;
-	if (fdt == NULL) { return -1; }
-	struct fd_entry **fds = fdt->fds;
-	if (fds == NULL) { return -1; }
-	if(!fd_is_valid (fdt, fd)) {
-		return -1;
-	}
-	struct fd_entry *fde = *(fds + fd);
-	if (fde == NULL) { return -1; }
-	if (fde->type == FD_STDOUT) {
-		check_user_laddr(buffer, size);
-		putbuf(buffer, size);
-		return size;
-	}
-	struct file *opend_file = fde->file;
-	if (opend_file == NULL) { return -1; }
-	check_user_laddr(buffer, size);
-	lock_acquire(&filesys_lock);
-	int byte_written = file_write(opend_file, buffer, size);
-	lock_release(&filesys_lock);
-
-	return byte_written;
-}
-
-/* EXIT_CODE로 프로세스를 종료합니다. 이후 process_exit()이 호출됩니다. 
-   비정상적인 종료시 EXIT_CODE에 -1를 지정하세요. */
-void
-syscall_exit (const int exit_code) {
-	thread_current()->exit_code = exit_code;
-	thread_exit();
-}
-
-/* static functions */
-
-static int
-syscall_wait(pid_t pid) {
-	return process_wait (pid);
-}
-
-static pid_t
-syscall_fork (const char *thread_name, struct intr_frame *f) {
-	check_user_addr(thread_name);
-	return process_fork(thread_name, f);
-}
-
-static int
-syscall_open (const char *file) {
-	if (!check_file_name (file)) {
-		return -1;
-	}
-
-	lock_acquire (&filesys_lock);
-	struct file *opened_file = filesys_open (file);
-	lock_release (&filesys_lock);
-	if (opened_file == NULL) {
-		return -1;
-	}
-
-	struct fd_table *fdt = thread_current ()->fd_table;
-	if (fdt == NULL) {
-		file_close (opened_file);
-		return -1;
-	}
-
-	int fd = fd_find_blank (fdt);
-	if (fd < 0) {
-		file_close (opened_file);
-		return -1;
-	}
-
-	struct fd_entry *entry = malloc (sizeof *entry);
-	if (entry == NULL) {
-		file_close (opened_file);
-		return -1;
-	}
-
-	entry->type = FD_FILE;
-	entry->file = opened_file;
-	entry->ref_count = malloc (sizeof *entry->ref_count);
-	if (entry->ref_count == NULL) {
-		free (entry);
-		file_close (opened_file);
-		return -1;
-	}
-	*entry->ref_count = 1;
-	fdt->fds[fd] = entry;
-	return fd;
-}
-
-static bool
-syscall_remove (const char *file) {
-	if (!check_file_name (file)) {
-		return false;
-	}
-
-	lock_acquire (&filesys_lock);
-	bool success = filesys_remove (file);
-	lock_release (&filesys_lock);
-	return success;
 }
 
 static struct file *
@@ -359,71 +256,6 @@ get_file_from_fd (int fd) {
 		return NULL;
 	}
 	return fde->file;
-}
-
-static void
-syscall_seek (int fd, unsigned position) {
-	struct file *file = get_file_from_fd (fd);
-	if (file == NULL) {
-		return;
-	}
-
-	lock_acquire (&filesys_lock);
-	file_seek (file, position);
-	lock_release (&filesys_lock);
-}
-
-static unsigned
-syscall_tell (int fd) {
-	struct file *file = get_file_from_fd (fd);
-	if (file == NULL) {
-		return 0;
-	}
-
-	lock_acquire (&filesys_lock);
-	unsigned position = file_tell (file);
-	lock_release (&filesys_lock);
-	return position;
-}
-
-static int
-syscall_dup2 (int oldfd, int newfd) {
-	struct fd_table *fdt = thread_current ()->fd_table;
-	struct fd_entry *old_entry; 
-	struct fd_entry *new_entry;
-
-	if (fdt == NULL || oldfd < 0 || newfd < 0 || !fd_is_valid (fdt, oldfd)) {
-		return -1;
-	}
-	if (oldfd == newfd) {
-		return newfd;
-	}
-	while ((size_t) newfd >= fdt->size) {
-		if (fd_expaned (fdt, fdt->size << 1) < 0) {
-			return -1;
-		}
-	}
-
-	if (fd_is_valid (fdt, newfd)) {
-		fd_entry_free (fdt, newfd);
-	}
-
-	old_entry = fd_get_entry (fdt, oldfd);
-	new_entry = malloc (sizeof *new_entry);
-	if (new_entry == NULL) {
-		return -1;
-	}
-	new_entry->type = old_entry->type;
-	if (old_entry->type == FD_FILE) {
-		new_entry->file = old_entry->file;
-		new_entry->ref_count = old_entry->ref_count;
-		(*new_entry->ref_count)++;
-	} else {
-		new_entry->file = NULL;
-		new_entry->ref_count = NULL;
-	}
-	fdt->fds[newfd] = new_entry;
-	return newfd;
 }
 
 static bool
@@ -477,7 +309,8 @@ check_user_addr (const void *addr) {
 	}
 }
 
-static bool is_valid_user_buffer (const void *buffer, size_t size) {
+static bool 
+is_valid_user_buffer (const void *buffer, size_t size) {
 	if (size == 0) {
 		return true;
 	}
@@ -573,6 +406,174 @@ bool fd_duplicate(struct thread *parent, struct thread *child) {
     return false;
 }
 
+/* syscall functions */
+
+static int
+syscall_write (int fd, const void *buffer, unsigned size) {
+	struct fd_table *fdt = thread_current ()->fd_table;
+	if (fdt == NULL) { return -1; }
+	struct fd_entry **fds = fdt->fds;
+	if (fds == NULL) { return -1; }
+	if(!fd_is_valid (fdt, fd)) {
+		return -1;
+	}
+	struct fd_entry *fde = *(fds + fd);
+	if (fde == NULL) { return -1; }
+	if (fde->type == FD_STDOUT) {
+		check_user_laddr(buffer, size);
+		putbuf(buffer, size);
+		return size;
+	}
+	struct file *opend_file = fde->file;
+	if (opend_file == NULL) { return -1; }
+	check_user_laddr(buffer, size);
+	lock_acquire(&filesys_lock);
+	int byte_written = file_write(opend_file, buffer, size);
+	lock_release(&filesys_lock);
+
+	return byte_written;
+}
+
+/* EXIT_CODE로 프로세스를 종료합니다. 이후 process_exit()이 호출됩니다. 
+   비정상적인 종료시 EXIT_CODE에 -1를 지정하세요. */
+static void
+syscall_exit (const int exit_code) {
+	thread_current()->exit_code = exit_code;
+	thread_exit();
+}
+
+static int
+syscall_wait(pid_t pid) {
+	return process_wait (pid);
+}
+
+static pid_t
+syscall_fork (const char *thread_name, struct intr_frame *f) {
+	check_user_addr(thread_name);
+	return process_fork(thread_name, f);
+}
+
+static int
+syscall_open (const char *file) {
+	if (!check_file_name (file)) {
+		return -1;
+	}
+
+	lock_acquire (&filesys_lock);
+	struct file *opened_file = filesys_open (file);
+	lock_release (&filesys_lock);
+	if (opened_file == NULL) {
+		return -1;
+	}
+
+	struct fd_table *fdt = thread_current ()->fd_table;
+	if (fdt == NULL) {
+		file_close (opened_file);
+		return -1;
+	}
+
+	int fd = fd_find_blank (fdt);
+	if (fd < 0) {
+		file_close (opened_file);
+		return -1;
+	}
+
+	struct fd_entry *entry = malloc (sizeof *entry);
+	if (entry == NULL) {
+		file_close (opened_file);
+		return -1;
+	}
+
+	entry->type = FD_FILE;
+	entry->file = opened_file;
+	entry->ref_count = malloc (sizeof *entry->ref_count);
+	if (entry->ref_count == NULL) {
+		free (entry);
+		file_close (opened_file);
+		return -1;
+	}
+	*entry->ref_count = 1;
+	fdt->fds[fd] = entry;
+	return fd;
+}
+
+static bool
+syscall_remove (const char *file) {
+	if (!check_file_name (file)) {
+		return false;
+	}
+
+	lock_acquire (&filesys_lock);
+	bool success = filesys_remove (file);
+	lock_release (&filesys_lock);
+	return success;
+}
+
+static void
+syscall_seek (int fd, unsigned position) {
+	struct file *file = get_file_from_fd (fd);
+	if (file == NULL) {
+		return;
+	}
+
+	lock_acquire (&filesys_lock);
+	file_seek (file, position);
+	lock_release (&filesys_lock);
+}
+
+static unsigned
+syscall_tell (int fd) {
+	struct file *file = get_file_from_fd (fd);
+	if (file == NULL) {
+		return 0;
+	}
+
+	lock_acquire (&filesys_lock);
+	unsigned position = file_tell (file);
+	lock_release (&filesys_lock);
+	return position;
+}
+
+static int
+syscall_dup2 (int oldfd, int newfd) {
+	struct fd_table *fdt = thread_current ()->fd_table;
+	struct fd_entry *old_entry; 
+	struct fd_entry *new_entry;
+
+	if (fdt == NULL || oldfd < 0 || newfd < 0 || !fd_is_valid (fdt, oldfd)) {
+		return -1;
+	}
+	if (oldfd == newfd) {
+		return newfd;
+	}
+	while ((size_t) newfd >= fdt->size) {
+		if (fd_expaned (fdt, fdt->size << 1) < 0) {
+			return -1;
+		}
+	}
+
+	if (fd_is_valid (fdt, newfd)) {
+		fd_entry_free (fdt, newfd);
+	}
+
+	old_entry = fd_get_entry (fdt, oldfd);
+	new_entry = malloc (sizeof *new_entry);
+	if (new_entry == NULL) {
+		return -1;
+	}
+	new_entry->type = old_entry->type;
+	if (old_entry->type == FD_FILE) {
+		new_entry->file = old_entry->file;
+		new_entry->ref_count = old_entry->ref_count;
+		(*new_entry->ref_count)++;
+	} else {
+		new_entry->file = NULL;
+		new_entry->ref_count = NULL;
+	}
+	fdt->fds[newfd] = new_entry;
+	return newfd;
+}
+
 static int
 syscall_read (int fd, const void *buffer, unsigned size) {
 	struct fd_table *fdt = thread_current ()->fd_table;
@@ -610,7 +611,7 @@ syscall_read (int fd, const void *buffer, unsigned size) {
 }
 
 static int
-sys_filesize (const int fd) {
+syscall_filesize (const int fd) {
 	struct thread *cur = thread_current ();
 	struct fd_table *fdt = cur->fd_table;
 	struct fd_entry *fde;
@@ -630,7 +631,7 @@ sys_filesize (const int fd) {
 }
 
 static int
-sys_exec (char *file) {
+syscall_exec (char *file) {
 	if(!check_file_name(file)) {
 		return -1;
 	}
