@@ -1,0 +1,18 @@
+{
+  "configurations": [
+    {
+      "name": "Pintos",
+      "includePath": [
+        "${workspaceFolder}/**"
+      ],
+      "defines": [
+        "USERPROG",
+        "VM"
+      ],
+      "compilerPath": "gcc",
+      "cStandard": "c11",
+      "intelliSenseMode": "windows-gcc-x64"
+    }
+  ],
+  "version": 4
+}
