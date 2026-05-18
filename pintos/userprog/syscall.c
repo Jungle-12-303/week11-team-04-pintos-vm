@@ -46,6 +46,8 @@ static int 		syscall_dup2 (int oldfd, int newfd);
 static int 		syscall_read (int fd, const void *buffer, unsigned size);
 static int 		syscall_filesize (const int fd);
 static int 		syscall_exec (char *file);
+static void *   syscall_mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+static void 	sysccall_munmap (void *addr);
 
 
 /* System call.
@@ -639,4 +641,15 @@ syscall_exec (char *file) {
 		syscall_exit(-1);
 	}
 	NOT_REACHED();
+}
+
+void *
+syscall_mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
+	/* TODO: syscall_mmap 구현 */
+	return NULL;
+}
+
+void
+sysccall_munmap (void *addr) {
+	/* TODO: syscall_mummap 구현 */
 }
