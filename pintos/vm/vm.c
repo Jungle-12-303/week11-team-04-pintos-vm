@@ -63,26 +63,6 @@ vm_page_initializer (struct page *page, enum vm_type type, void *kva) {
 	ASSERT (page != NULL);
 	struct supplemental_page_table *spt = &thread_current()->spt;
 	
-	switch (page_get_type(page))
-	{
-	case VM_UNINIT:
-		ASSERT (type != VM_UNINIT)
-		// free(kpage);
-		return false;
-		break;
-	case VM_ANON:
-		// anon_initializer(page, type, kva);
-		// memset(kpage, 0, PGSIZE); // FIXME: anon_initializer
-		break;
-	case VM_FILE:
-		// memset(kpage, 0, PGSIZE); // FIXME: do not init in 0s
-		break;
-	
-	default:
-		// free(kpage);
-		return false;
-		break;
-	}
 	// page->va = ptov(kva); // TODO: make it valid in `thread/vaddr.h`
 	if(page->frame == NULL) {
 		page->frame = malloc (sizeof (struct frame));
@@ -119,8 +99,31 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		 이후에는 uninit_new 호출 후 해당 필드를 수정해야 합니다. */
 
 		struct page *page = malloc (sizeof (struct page));
+
 		// initialize PAGE
-		uninit_new(page, pg_round_down(upage), init, type, aux, vm_page_initializer);
+		//uninit_new(page, pg_round_down(upage), init, type, aux, vm_page_initializer);
+
+		// VM_TYPE(type): 보조 정보를 제외한 타입 정보만 얻을 수 있는 매크로
+		switch (VM_TYPE(type))
+		{
+		// 이 분기는 uninit 타입 페이지에서 다른 페이지로 전환하기 위한 처리를 하는 분기이기 때문에 애초에 VM_UNINIT일 때의 처리를 해 주지 않아도 됨
+		// case VM_UNINIT:
+		// 	uninit_new(page, pg_round_down(upage), init, type, aux, uninit_initialize);
+		// 	//ASSERT (type != VM_UNINIT)
+		// 	// free(kpage);
+		// 	//return false;
+		// 	break;
+		case VM_ANON:
+			uninit_new(page, pg_round_down(upage), init, type, aux, anon_initializer);
+			break;
+		case VM_FILE:
+			uninit_new(page, pg_round_down(upage), init, type, aux, file_backed_initializer);
+			break;
+		// default:
+		// 	// free(kpage);
+		// 	return false;
+		// 	break;
+		}
 
 		/* TODO: Insert the page into the spt. */
 		if(!spt_insert_page(spt, page)) {
