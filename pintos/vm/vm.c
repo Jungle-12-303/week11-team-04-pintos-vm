@@ -28,6 +28,9 @@ vm_init (void) {
 /* Get the type of the page. This function is useful if you want to know the
  * type of the page after it will be initialized.
  * This function is fully implemented now. */
+/* 페이지의 유형을 가져옵니다.
+ * 이 함수는 페이지가 초기화된 후 그 유형을 확인하고자 할 때 유용합니다.
+ * 이 함수는 현재 완전히 구현되었습니다. */
 enum vm_type
 page_get_type (struct page *page) {
 	int ty = VM_TYPE (page->operations->type);
