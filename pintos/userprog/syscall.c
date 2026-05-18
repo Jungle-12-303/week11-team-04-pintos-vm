@@ -239,6 +239,14 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		f->R.rax = syscall_dup2 ((int) arg0, (int) arg1);
 		break;
 	}
+	case SYS_MMAP: {
+		f->R.rax = syscall_mmap((void *) arg0, (size_t) arg1, (int) arg2, (int) arg3, (off_t) arg4);
+		break;
+	}
+	case SYS_MUNMAP: {
+		sysccall_munmap((void *) arg0);
+		break;
+	}
 	default:{
 		break;
 	}
@@ -645,11 +653,25 @@ syscall_exec (char *file) {
 
 void *
 syscall_mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
-	/* TODO: syscall_mmap 구현 */
-	return NULL;
+	struct file *file = get_file_from_fd(fd);
+	if(file == NULL)
+		return NULL;
+
+	// char buf[(2 << 15)] = {0};
+	// off_t n_read = file_read_at(file, buf, length, offset);
+	// void *pages = palloc_get_multiple (PAL_USER | PAL_ZERO, n_read / PGSIZE + 1);
+
+	// if(pages == NULL)
+	// 	return NULL;
+
+	// memcpy(pages, buf, n_read);
+	/* vm_alloc_page_with_initializer의 init은 lazy_load이고, 유효한 page가 PAGE로 넘겨진다.
+	   즉, aux로 파일 오프셋 등 정보를 넘기고 init에서 초기화 할 것. */
+	// vm_alloc_page_with_initializer(VM_FILE, upage, writable, init, aux);
+	return do_mmap(addr, length, writable, file, offset);
 }
 
 void
 sysccall_munmap (void *addr) {
-	/* TODO: syscall_mummap 구현 */
+	return do_munmap(addr);
 }
