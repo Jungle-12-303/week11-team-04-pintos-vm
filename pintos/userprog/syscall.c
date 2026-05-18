@@ -237,6 +237,14 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		f->R.rax = syscall_dup2 ((int) arg0, (int) arg1);
 		break;
 	}
+	//0517 syscall_mmap 구현
+	case SYS_MMAP: {
+		// fake_func((void *)arg0,(size_t) arg1,(int) arg2,(int) arg3, (off_t) arg4);
+	}
+	//0517 syscall_munmap 구현
+	case SYS_MUNMAP: {
+		// fake_func((void *) arg0);
+	}
 	default:{
 		break;
 	}
@@ -639,4 +647,34 @@ syscall_exec (char *file) {
 		syscall_exit(-1);
 	}
 	NOT_REACHED();
+}
+
+
+off_t
+file_read_at_lock (struct file *file, void *buffer, off_t size, off_t ofs) {
+	if (file == NULL) {
+		return -1;
+	}
+	lock_acquire (&filesys_lock);
+	off_t read_byte = file_read_at (file, buffer, size, ofs);
+	lock_release (&filesys_lock);
+	if (read_byte <= 0) {
+		return -1;
+	}
+	return read_byte;
+}
+
+off_t
+file_write_at_lock (struct file *file, const void *buffer, off_t size, off_t ofs)  {
+	if (file == NULL) {
+		return -1;
+	}
+	lock_acquire(&filesys_lock);
+	off_t read_byte = file_write_at (file, buffer, size, ofs);
+	lock_release(&filesys_lock);
+	if (read_byte <= 0) {
+		return -1;
+	}
+	return read_byte;
+
 }
