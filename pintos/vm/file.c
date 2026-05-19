@@ -97,8 +97,8 @@ file_backed_swap_out (struct page *page) {
 static void
 file_backed_destroy (struct page *page) {
 	struct file_page *file_page = &page->file;
-	uint64_t *pml4 = page->frame->owner_thread->pml4;
 	if (page->frame != NULL) {
+		uint64_t *pml4 = page->frame->owner_thread->pml4;
 		if (file_page->reopend_file == NULL) {
 			printf("file_backed_destroy에서 파일 페이지 존재하지 않음\n");
 			return;
