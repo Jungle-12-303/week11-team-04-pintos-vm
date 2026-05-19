@@ -254,20 +254,23 @@ vm_evict_frame (void) {
 		return NULL;
 	}
 
+	//ASSERT(is_kernel_vaddr(victim->kva));
+	
 	// 함수 포인터로 각 페이지 타입에 맞는 swap_out 함수 실행 
 	bool swapped = swap_out(victim->page);
-
+	
+	ASSERT(is_kernel_vaddr(victim->kva));
 	ASSERT(swapped);
-
+	
 	// 현재 오너 스레드의 pml4와 PA 매핑을 끊어줌  
 	pml4_clear_page(victim->owner_thread->pml4, victim->page->va);
-		
+	
 	// 프레임 끊기	
 	victim->page->frame = NULL;
-		
+	
 	// 페이지 끊기
 	victim->page = NULL;
-
+	
 	return victim;
 }
 
@@ -302,7 +305,8 @@ vm_get_frame (void) {
 		// victim 선정 -> evict 안에서 호출함
 		frame = vm_evict_frame();
 
-		ASSERT(frame);
+		//ASSERT(frame);
+		ASSERT(is_kernel_vaddr(frame->kva));
 	}
 	else{	
 		// kva가 반드시 NULL이 아닐 때만 table에 넣기 
@@ -387,6 +391,8 @@ vm_do_claim_page (struct page *page) {
 	frame->page = page;
 	page->frame = frame;
 	frame->owner_thread = curr;
+	// TODO: frame->kva 넘겨주기 
+
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	/* TODO: 페이지의 가상 주소(VA)를 프레임의 물리 주소(PA)에 매핑하는 페이지 테이블 항목을 삽입합니다. */
