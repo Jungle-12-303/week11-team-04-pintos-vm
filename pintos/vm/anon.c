@@ -4,6 +4,7 @@
 #include "devices/disk.h"
 #include "lib/kernel/bitmap.h"
 #include "threads/synch.h"
+#include "include/threads/vaddr.h"
 
 /* DO NOT MODIFY BELOW LINE */
 // swap 용도 disk 할당 구간
@@ -65,6 +66,7 @@ anon_swap_in (struct page *page, void *kva) {
 	// swap_slot 유효성 검사
 	if (swap_slot == SWAP_SLOT_INVALID) {
 		lock_release(&swap_lock);
+		memset((page->frame)->kva,0,PGSIZE);
 		return true;
 	}
 	if ((swap_slot >= (disk_size(swap_disk) / 8))) {
