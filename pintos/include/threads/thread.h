@@ -111,6 +111,7 @@ struct thread {
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
 	struct file *exec_file;            /* Executable file for deny-write */
+	uint64_t *user_rsp;					/* vm_try_handle_fault에서 kernel이 user stack에 접근할 때 rsp 정보 필요 */
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

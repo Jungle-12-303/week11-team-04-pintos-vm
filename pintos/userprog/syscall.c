@@ -25,9 +25,9 @@
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
-static void check_user_addr (const void *addr);
-static void check_user_laddr (const void *buf, const size_t size);
-static void check_user_waddr (const void *buf, const size_t size);
+static bool check_user_addr (const void *addr);
+static bool check_user_laddr (const void *buf, const size_t size);
+static bool check_user_waddr (const void *buf, const size_t size);
 static bool is_valid_user_buffer (const void *buffer, size_t size);
 static bool check_file_name (const char *s);
 static struct file *get_file_from_fd (int fd);
@@ -145,6 +145,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			 * 기존값이 양수라면 성공했다고 오인 가능성이 있음
 			 */
 			// f->R.rax = -1; // 실패시 -1 리턴
+			thread_current ()->user_rsp = f->rsp;
 			f->R.rax = syscall_read ((int) arg0, (const char *) arg1, (unsigned) arg2);
 		}
 		break;
@@ -271,7 +272,8 @@ get_file_from_fd (int fd) {
 static bool
 check_file_name (const char *s) {
     for (int i = 0; i <= NAME_MAX; i++) {
-        check_user_addr (s + i);
+        if (!check_user_addr (s + i))
+			return false;
 
         if (s[i] == '\0')
             return true;
@@ -282,18 +284,23 @@ check_file_name (const char *s) {
 
 /* 최대 SIZE byte만큼 주소가 유효한지 검사합니다. 여러 페이지에 걸쳐서 
    있을 경우를 검사하기 위해 페이지의 시작 주소가 유효한지 검사합니다. */
-static void
+static bool
 check_user_laddr (const void *buf, const size_t size) {
 	const char *start = buf;
 	const char *end = start + size;
 	if(size == 0) return;
 	for(uint64_t p = pg_round_down(start); p < end; p += PGSIZE) {
-		check_user_addr(p);
-	}
-	check_user_addr(end - 1);
+		if (!check_user_addr(p))
+			return false;
+	}	
+	if (!check_user_addr(end - 1))
+		return false;
+	return true;
 }
 
-static void
+/* 사용자 버퍼 BUF[0..SIZE)가 유효한 주소 범위이며 쓰기 가능한 페이지들인지 검사합니다.
+   유효하지 않거나 쓰기 권한이 없으면 프로세스를 종료합니다. */
+static bool
 check_user_waddr (const void *buf, const size_t size) {
 	const char *start = buf;
 	const char *end = start + size;
@@ -301,22 +308,26 @@ check_user_waddr (const void *buf, const size_t size) {
 	if (size == 0) {
 		return;
 	}
-	check_user_laddr (buf, size);
+	if(!check_user_laddr (buf, size))
+		return false;
 	for (uint64_t p = (uint64_t) pg_round_down (start); p < (uint64_t) end; p += PGSIZE) {
 		uint64_t *pte = pml4e_walk (thread_current ()->pml4, p, 0);
 		if (pte == NULL || !(*pte & PTE_W)) {
 			syscall_exit (-1);
 		}
 	}
+	return true;
 }
 
 /* 포인터가 실제로 접근 가능한지 검사합니다. 
    실패하면 thread_exit()을 하고 -1을 리턴 합니다. */
-static void
+static bool
 check_user_addr (const void *addr) {
 	if(addr == NULL || !is_user_vaddr(addr) || pml4_get_page(thread_current ()->pml4, addr) == NULL) {
-		syscall_exit(-1);
+		// syscall_exit(-1);
+		return false;
 	}
+	return true;
 }
 
 static bool 
@@ -430,13 +441,15 @@ syscall_write (int fd, const void *buffer, unsigned size) {
 	struct fd_entry *fde = *(fds + fd);
 	if (fde == NULL) { return -1; }
 	if (fde->type == FD_STDOUT) {
-		check_user_laddr(buffer, size);
+		if (!check_user_laddr(buffer, size))
+			syscall_exit(-1);
 		putbuf(buffer, size);
 		return size;
 	}
 	struct file *opend_file = fde->file;
 	if (opend_file == NULL) { return -1; }
-	check_user_laddr(buffer, size);
+	if (!check_user_laddr(buffer, size))
+		syscall_exit(-1);
 	lock_acquire(&filesys_lock);
 	int byte_written = file_write(opend_file, buffer, size);
 	lock_release(&filesys_lock);
@@ -459,8 +472,11 @@ syscall_wait(pid_t pid) {
 
 static pid_t
 syscall_fork (const char *thread_name, struct intr_frame *f) {
-	check_user_addr(thread_name);
-	return process_fork(thread_name, f);
+	if(check_user_addr(thread_name)) {
+		return process_fork(thread_name, f);
+	} else {
+		syscall_exit(-1);
+	}
 }
 
 static int
@@ -587,22 +603,16 @@ syscall_dup2 (int oldfd, int newfd) {
 static int
 syscall_read (int fd, const void *buffer, unsigned size) {
 	struct fd_table *fdt = thread_current ()->fd_table;
-	if (fdt == NULL) {
+	if (fdt == NULL || fdt->fds == NULL || 
+		!fd_is_valid (fdt, fd) || (fd >= 0 && fdt->size <= fd)) {
 		return -1;
 	}
-	struct fd_entry **fds = fdt->fds;
-	if (fds == NULL) {
-		return -1;
-	}
-	if (!fd_is_valid (fdt, fd)) {
-		return -1;
-	}
-	struct fd_entry *fde = *(fds + fd);
+	struct fd_entry *fde = *(fdt->fds + fd);
 	if (fde == NULL) {
 		return -1;
 	}
 	if (fde->type == FD_STDIN) {
-		check_user_waddr (buffer, size);
+		check_user_waddr (buffer, size); // TODO: for `pt-grow-stk-sc`, stk growth 범위인지 확인 / handle_fault에서 user stack 저장한거 가져와서 확인하기
 		for (unsigned i = 0; i < size; i++) {
 			*(((char *) buffer) + i) = input_getc ();
 		}
@@ -612,7 +622,10 @@ syscall_read (int fd, const void *buffer, unsigned size) {
 	if (opend_file == NULL) {
 		return -1;
 	}
-	check_user_waddr (buffer, size);
+	check_user_waddr (buffer, size); // TODO: for `pt-grow-stk-sc`, stk growth 범위인지 확인
+	if(buffer < thread_current ()->user_rsp - 8) {
+		syscall_exit(-1);
+	}
 	lock_acquire (&filesys_lock);
 	int byte_written = file_read (opend_file, buffer, size);
 	lock_release (&filesys_lock);
