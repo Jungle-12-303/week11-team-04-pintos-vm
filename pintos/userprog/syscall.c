@@ -651,6 +651,35 @@ syscall_exec (char *file) {
 	NOT_REACHED();
 }
 
+
+off_t
+file_read_at_lock (struct file *file, void *buffer, off_t size, off_t ofs) {
+	if (file == NULL) {
+		return -1;
+	}
+	lock_acquire (&filesys_lock);
+	off_t read_byte = file_read_at (file, buffer, size, ofs);
+	lock_release (&filesys_lock);
+	if (read_byte <= 0) {
+		return -1;
+	}
+	return read_byte;
+}
+
+off_t
+file_write_at_lock (struct file *file, const void *buffer, off_t size, off_t ofs)  {
+	if (file == NULL) {
+		return -1;
+	}
+	lock_acquire(&filesys_lock);
+	off_t read_byte = file_write_at (file, buffer, size, ofs);
+	lock_release(&filesys_lock);
+	if (read_byte <= 0) {
+		return -1;
+	}
+	return read_byte;
+
+}
 void *
 syscall_mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
 	struct file *file = get_file_from_fd(fd);

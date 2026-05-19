@@ -123,8 +123,7 @@ anon_swap_out (struct page *page) {
 	}
 	// FIXME: evcit 로직의 frame 재사용 규칙을 위해 swap_out에서 초기화 하면 안 됨 -> swap_out 이후 evict에서 이미 처리하고 있음 
 	// 0518 swap_out frame 초기화 추가
-	// ((page->frame)->kva) = NULL;
-	// page->frame = NULL;
+	// free(page->frame);
 	lock_release(&swap_lock);
 	return true;
 }

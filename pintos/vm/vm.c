@@ -85,7 +85,7 @@ bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
 
-	ASSERT (VM_TYPE(type) != VM_UNINIT)
+	ASSERT (VM_TYPE(type) != VM_UNINIT);
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
@@ -99,7 +99,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		 이후에는 uninit_new 호출 후 해당 필드를 수정해야 합니다. */
 
 		struct page *page = malloc (sizeof (struct page));
-
+		page->aux = aux;
 		// initialize PAGE
 		//uninit_new(page, pg_round_down(upage), init, type, aux, vm_page_initializer);
 

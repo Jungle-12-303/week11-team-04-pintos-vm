@@ -1,6 +1,8 @@
 /* file.c: Implementation of memory backed file object (mmaped object). */
 
 #include "vm/vm.h"
+#include "userprog/process.h"
+#include "userprog/syscall.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "threads/mmu.h"
@@ -30,26 +32,89 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 	/* Set up the handler */
 	page->operations = &file_ops;
 
-	struct file_page *file_page = &page->file;
+	// // lazy_load_file에서 처리
+	// struct file_page *file_page = &page->file;
+
+	// // // 파일 정보 넣기
+	// struct segment *seg =(struct segment *) (page->aux);
+	// file_page->reopend_file = seg->file;
+	// file_page->writable = seg->writable;
+	// file_page->offset = seg->ofs;
+	return true;
 }
 
 /* Swap in the page by read contents from the file. */
 static bool
 file_backed_swap_in (struct page *page, void *kva) {
-	struct file_page *file_page UNUSED = &page->file;
+	// Swaps in a page at kva by reading the contents in from the file. You need to synchronize with the file system.
+	struct file_page *file_page = &page->file;
+	if (file_page->reopend_file == NULL) {
+		return false;
+	}
+	off_t read_byte = file_read_at_lock(file_page->reopend_file, kva, file_page->read_bytes,file_page->offset);
+	if (file_page->zero_bytes > 0) {
+		memset((void *)( (char *) (kva) + file_page->read_bytes),0,file_page->zero_bytes);
+	}
+	if (read_byte == -1) {
+		return false;
+	}
+	if ((size_t) read_byte < file_page->read_bytes) {
+		return false;
+	}
+	return true;
 }
 
 /* Swap out the page by writeback contents to the file. */
 static bool
 file_backed_swap_out (struct page *page) {
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page = &page->file;
+	// MEMORY -> DISK
+	ASSERT(page->frame != NULL);
+	ASSERT((page->frame)->kva != NULL);
+	uint64_t *pml4 = page->frame->owner_thread->pml4;
+	if (file_page->reopend_file == NULL) {
+		return false;
+	}
+	if (pml4_is_dirty(pml4,page->va) && file_page->writable) {
+		// read_byte == 0 인 페이지 처리
+		off_t read_byte = file_write_at_lock(file_page->reopend_file,(page->frame)->kva,file_page->read_bytes,file_page->offset);
+		if (read_byte == -1) {
+			return false;
+		}
+		if ((size_t) read_byte < file_page->read_bytes) {
+			return false;
+		}
+		pml4_set_dirty(pml4,page->va,0);
+	}
+	// free로 제거만함, eviction에서도 제거하는지 확인 필요
+	// free(page->frame);
+	return true;
 }
 
 /* Destory the file backed page. PAGE will be freed by the caller. */
 /* 파일 기반 페이지를 삭제합니다. PAGE는 호출 측에서 해제합니다. */
 static void
 file_backed_destroy (struct page *page) {
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page = &page->file;
+	if (page->frame != NULL) {
+		uint64_t *pml4 = page->frame->owner_thread->pml4;
+		if (file_page->reopend_file == NULL) {
+			printf("file_backed_destroy에서 파일 페이지 존재하지 않음\n");
+			return;
+		}
+		if (pml4_is_dirty(pml4, page->va) && file_page->writable) {
+			off_t read_byte = file_write_at_lock(file_page->reopend_file,page->frame->kva,file_page->read_bytes,file_page->offset);
+			if (read_byte == -1) {
+				printf("file_backed_destroy에서 read_byte 에러 발생\n");
+				return;
+			}
+			if ((size_t) read_byte < file_page->read_bytes) {
+				printf("file_backed_destroy에서 read_byte 에러 발생\n");
+				return;
+			}
+			pml4_set_dirty(pml4,page->va,0);
+		}
+	}
 }
 
 struct mmap_mapping_elem *
@@ -109,6 +174,7 @@ do_mmap (void *addr, size_t length, int writable,
 		aux->offset = page_offset;
 		aux->read_bytes = read_bytes;
 		aux->zero_bytes = zero_bytes;
+		aux->writable =  writable;
 		
 		if (!vm_alloc_page_with_initializer (VM_FILE, upage, writable, lazy_load_file, aux)) {
 			return false;

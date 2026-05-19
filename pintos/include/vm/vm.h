@@ -44,6 +44,7 @@ struct thread;
 struct page {
 	const struct page_operations *operations;
 	void *va;              /* Address in terms of user space */
+	void *aux;
 	struct frame *frame;   /* Back reference for frame */
 
 	/* Your implementation */
