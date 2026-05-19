@@ -8,8 +8,10 @@
 #include "threads/thread.h"
 #include <string.h>
 
+struct list frame_table;
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
- * intialize codes. */
+ * intialize codes. */  
 void
 vm_init (void) {
 	vm_anon_init ();
@@ -20,11 +22,15 @@ vm_init (void) {
 	register_inspect_intr ();
 	/* DO NOT MODIFY UPPER LINES. */
 	/* TODO: Your code goes here. */
+	list_init(&frame_table);
 }
 
 /* Get the type of the page. This function is useful if you want to know the
  * type of the page after it will be initialized.
  * This function is fully implemented now. */
+/* 페이지의 유형을 가져옵니다.
+ * 이 함수는 페이지가 초기화된 후 그 유형을 확인하고자 할 때 유용합니다.
+ * 이 함수는 현재 완전히 구현되었습니다. */
 enum vm_type
 page_get_type (struct page *page) {
 	int ty = VM_TYPE (page->operations->type);
@@ -57,26 +63,6 @@ vm_page_initializer (struct page *page, enum vm_type type, void *kva) {
 	ASSERT (page != NULL);
 	struct supplemental_page_table *spt = &thread_current()->spt;
 	
-	switch (page_get_type(page))
-	{
-	case VM_UNINIT:
-		ASSERT (type != VM_UNINIT)
-		// free(kpage);
-		return false;
-		break;
-	case VM_ANON:
-		// anon_initializer(page, type, kva);
-		// memset(kpage, 0, PGSIZE); // FIXME: anon_initializer
-		break;
-	case VM_FILE:
-		// memset(kpage, 0, PGSIZE); // FIXME: do not init in 0s
-		break;
-	
-	default:
-		// free(kpage);
-		return false;
-		break;
-	}
 	// page->va = ptov(kva); // TODO: make it valid in `thread/vaddr.h`
 	if(page->frame == NULL) {
 		page->frame = malloc (sizeof (struct frame));
@@ -108,10 +94,39 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
+		/* TODO: 페이지를 생성하고, VM 유형에 따라 초기화 함수를 불러온 다음,
+         * TODO: uninit_new를 호출하여 "uninit" 페이지 구조체를 생성합니다. 
+		 이후에는 uninit_new 호출 후 해당 필드를 수정해야 합니다. */
+
 		struct page *page = malloc (sizeof (struct page));
+
 		// initialize PAGE
-		uninit_new(page, pg_round_down(upage), init, type, aux, vm_page_initializer);
+		//uninit_new(page, pg_round_down(upage), init, type, aux, vm_page_initializer);
+
+		// VM_TYPE(type): 보조 정보를 제외한 타입 정보만 얻을 수 있는 매크로
+		switch (VM_TYPE(type))
+		{
+		// 이 분기는 uninit 타입 페이지에서 다른 페이지로 전환하기 위한 처리를 하는 분기이기 때문에 애초에 VM_UNINIT일 때의 처리를 해 주지 않아도 됨
+		// case VM_UNINIT:
+		// 	uninit_new(page, pg_round_down(upage), init, type, aux, uninit_initialize);
+		// 	//ASSERT (type != VM_UNINIT)
+		// 	// free(kpage);
+		// 	//return false;
+		// 	break;
+		case VM_ANON:
+			uninit_new(page, pg_round_down(upage), init, type, aux, anon_initializer);
+			break;
+		case VM_FILE:
+			uninit_new(page, pg_round_down(upage), init, type, aux, file_backed_initializer);
+			break;
+		// default:
+		// 	// free(kpage);
+		// 	return false;
+		// 	break;
+		}
+		
 		page->writable = writable;
+		
 
 		/* TODO: Insert the page into the spt. */
 		if(!spt_insert_page(spt, page)) {
@@ -152,22 +167,114 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 }
 
 /* Get the struct frame, that will be evicted. */
+/* 제거될 struct frame을 가져옵니다. */
 static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
-	 /* TODO: The policy for eviction is up to you. */
+	/* TODO: The policy for eviction is up to you. */
+	/* TODO: 제거 정책은 사용자가 결정합니다. */
+	/* 인자 없음 -> 알아서 접근해서 처리해야 함 
+	Clock 알고리즘(Second Chance)
+	1. 프레임 테이블을 한 바퀴 돈다 -> 프레임 테이블에 등록된 프레임(물리 page)들을 순회 
+		-> OS가 가지고 있는 현재 유저 풀 페이지들이 사용 중인 프레임 목록 => frame table 
+	2. 돌면서 Accessed bit가 1인 프레임이 있으면 값을 0으로 바꿔주고 통과함
+	3. 돌면서 Accessed bit가 0인 프레임이 있으면 victim으로 선정*/
+	
+	uint64_t *pml4;
+
+	if(list_empty(&frame_table))
+		return NULL;
+	
+	struct list_elem *e, *next, *end;
+	struct frame *f;
+
+	e = list_begin(&frame_table);
+
+	next = list_next(e);
+	end = list_end(&frame_table);
+	
+	if(next == end && victim == NULL)
+	{
+		f = list_entry(e, struct frame, elem);
+		
+		pml4 = f->owner_thread->pml4;
+
+		if((pml4_is_accessed(pml4, f->page->va) == 0)){
+			victim = f;
+			return victim;
+		}
+		else{
+			pml4_set_accessed(pml4, f->page->va, false);
+		}
+	}
+
+	while(e != end){
+		f = list_entry(e, struct frame, elem);
+
+		pml4 = f->owner_thread->pml4;
+	
+		if(pml4_is_accessed(pml4, f->page->va) == 1){
+			pml4_set_accessed(pml4, f->page->va, false);
+		}			
+		else{
+			victim = f;
+			return victim;
+		}
+			
+		//e = next;
+		// next가 end가 아닐 때 = next가 마지막 요소가 될 때까지 해당 
+		if(next != end)
+		{
+			// 여기서 e가 마지막 요소가 될 수 있음
+			e = next;
+			next = list_next(e);
+		}
+		// next가 end일 때 = e가 마지막 요소일 떄 
+		else{
+			e = list_begin(&frame_table);
+			next = list_next(e);
+		}
+	}
+
+	ASSERT(victim != NULL);
 
 	return victim;
 }
 
-/* Evict one page and return the corresponding frame.
+ 
+ /* Evict one page and return the corresponding frame.
  * Return NULL on error.*/
+/* 한 페이지를 제거하고 해당 프레임을 반환합니다.
+ * 오류 발생 시 NULL을 반환합니다.*/
+// ->: 공통 evict 로직 => 페이지 타입 별 작업은 file_backed_destroy에서 작업 
 static struct frame *
 vm_evict_frame (void) {
 	struct frame *victim UNUSED = vm_get_victim ();
 	/* TODO: swap out the victim and return the evicted frame. */
+	/* TODO: 피해 프레임을 교체하고 제거된 프레임을 반환합니다. */
+	//victim->page->operations->type;
+	if(victim == NULL){
+		return NULL;
+	}
 
-	return NULL;
+	//ASSERT(is_kernel_vaddr(victim->kva));
+	
+	// 함수 포인터로 각 페이지 타입에 맞는 swap_out 함수 실행 
+	bool swapped = swap_out(victim->page);
+	
+	ASSERT(is_kernel_vaddr(victim->kva));
+	ASSERT(swapped);
+	
+	// 현재 오너 스레드의 pml4와 PA 매핑을 끊어줌  
+	pml4_clear_page(victim->owner_thread->pml4, victim->page->va);
+	
+	// 프레임 끊기	
+	victim->page->frame = NULL;
+	
+	// 페이지 끊기
+	victim->page = NULL;
+	
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -178,11 +285,43 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
+	struct frame *victim = NULL;
+	struct thread *curr = thread_current();
+	
+	// 프레임 구조체를 만듦 -> 빈 프레임 
 	frame = malloc(sizeof(struct frame));
-	void *kva = palloc_get_page(PAL_USER | PAL_ZERO);
+
+	ASSERT(frame);
+
+	// 프레임의 kva에 넣을 페이지를 palloc으로 받음
+	// TODO: palloc으로 할당된 페이지는 쓰레기 값 남아있을 수 있어서 초기화 필요
+	frame->kva = palloc_get_page(PAL_USER|PAL_ZERO);
+	//memset(frame->kva, 0, PGSIZE);
+
+	// 사용 가능한 페이지 없으면
+	// = 물리 페이지를 받으려고 했는데 실패한 경우 
+	if(frame->kva == NULL){
+		// vm_evict_frame으로 반환되는 frame은 이미 malloc 되어있는 프레임이라
+		// 위에서 malloc한 frame을 free 해줘야 누수 안 생김 
+		free(frame);
+		
+		// victim 선정 -> evict 안에서 호출함
+		frame = vm_evict_frame();
+
+		//ASSERT(frame);
+		ASSERT(is_kernel_vaddr(frame->kva));
+	}
+	else{	
+		// kva가 반드시 NULL이 아닐 때만 table에 넣기 
+		// evict 된 프레임은 원래 프레임 테이블에 있는 상태 그대로라 테이블에 다시 넣어주면 안 됨
+		list_push_back(&frame_table, &frame->elem);
+		frame->owner_thread = curr;
+	}
+
+	// TODO: 예외 처리 명세 충족 X
+	// 회수 로직 추가 필요 
 	ASSERT (frame != NULL);
-	// ASSERT (frame->page == NULL);
-	frame->kva = kva;
+
 	return frame;
 }
 
@@ -252,12 +391,16 @@ vm_do_claim_page (struct page *page) {
 		return false;
 	}
 	struct frame *frame = vm_get_frame ();
-
+	struct thread *curr = thread_current();
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
+	frame->owner_thread = curr;
+	// TODO: frame->kva 넘겨주기 
+
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+	/* TODO: 페이지의 가상 주소(VA)를 프레임의 물리 주소(PA)에 매핑하는 페이지 테이블 항목을 삽입합니다. */
 	if(!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) {
 		printf("vm_do_claim_page(): pml4_set_page failed\n");
 		return false;

@@ -30,6 +30,7 @@ core
 .DS_Store
 
 #extension
+.vscode/c_cpp_properties.json
 .vscode/pintos-test-history.json
 pintos/.vscode/pintos-test-history.json
 # Annotation (auto-generated)
