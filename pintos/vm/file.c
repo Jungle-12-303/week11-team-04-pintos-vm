@@ -78,6 +78,22 @@ file_backed_swap_out (struct page *page) {
 static void
 file_backed_destroy (struct page *page) {
 	struct file_page *file_page UNUSED = &page->file;
+	
+struct file_page {
+	struct file *reopend_file;
+	off_t offset;
+	size_t read_bytes;
+	size_t zero_bytes;
+	size_t length;
+	bool writable;
+};
+	file_page->reopend_file = NULL;
+	file_page->offset = 0;
+	file_page->read_bytes=0;
+	file_page->zero_bytes=0;
+	file_page->length=0;
+	is_writable=false;
+
 }
 
 struct mmap_mapping_elem *
