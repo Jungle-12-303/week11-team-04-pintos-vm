@@ -68,8 +68,7 @@ file_backed_swap_in (struct page *page, void *kva) {
 static bool
 file_backed_swap_out (struct page *page) {
 	struct file_page *file_page = &page->file;
-	struct thread *curr = thread_current();
-	uint64_t *pml4 = curr->pml4;
+	uint64_t *pml4 = page->frame->owner_thread->pml4;
 
 	// MEMORY -> DISK
 	ASSERT(page->frame != NULL);
@@ -98,7 +97,7 @@ file_backed_swap_out (struct page *page) {
 static void
 file_backed_destroy (struct page *page) {
 	struct file_page *file_page = &page->file;
-	uint64_t *pml4 = thread_current()->pml4;
+	uint64_t *pml4 = page->frame->owner_thread->pml4;
 	if (page->frame != NULL) {
 		if (file_page->reopend_file == NULL) {
 			printf("file_backed_destroy에서 파일 페이지 존재하지 않음\n");
