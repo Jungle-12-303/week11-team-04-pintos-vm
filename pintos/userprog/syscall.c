@@ -589,17 +589,11 @@ syscall_dup2 (int oldfd, int newfd) {
 static int
 syscall_read (int fd, const void *buffer, unsigned size) {
 	struct fd_table *fdt = thread_current ()->fd_table;
-	if (fdt == NULL) {
+	if (fdt == NULL || fdt->fds == NULL || 
+		!fd_is_valid (fdt, fd) || (fd >= 0 && fdt->size <= fd)) {
 		return -1;
 	}
-	struct fd_entry **fds = fdt->fds;
-	if (fds == NULL) {
-		return -1;
-	}
-	if (!fd_is_valid (fdt, fd)) {
-		return -1;
-	}
-	struct fd_entry *fde = *(fds + fd);
+	struct fd_entry *fde = *(fdt->fds + fd);
 	if (fde == NULL) {
 		return -1;
 	}
