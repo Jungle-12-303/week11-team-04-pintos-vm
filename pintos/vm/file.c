@@ -32,14 +32,14 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 	/* Set up the handler */
 	page->operations = &file_ops;
 
-	struct file_page *file_page = &page->file;
+	// lazy_load_file에서 처리
+	// struct file_page *file_page = &page->file;
 
-	// 파일 정보 넣기
-	struct segment *seg =(struct segment *) &(page->aux);
-	file_page->reopend_file = seg->file;
-	file_page->writable = seg->writable;
-	file_page->offset = seg->ofs;
-	file_page->length = file_length(seg->file);
+	// // 파일 정보 넣기
+	// struct segment *seg =(struct segment *) (page->aux);
+	// file_page->reopend_file = seg->file;
+	// file_page->writable = seg->writable;
+	// file_page->offset = seg->ofs;
 	return true;
 }
 
@@ -51,9 +51,14 @@ file_backed_swap_in (struct page *page, void *kva) {
 	if (file_page->reopend_file == NULL) {
 		return false;
 	}
-	// file-backed page 하나는 파일 전체가 아니라 보통 한 page 구간만 담당합니다. 마지막 page는 read_bytes가 PGSIZE보다 작을 수도 있고, 나머지는 zero-fill이어야 합니다. 지금처럼 파일 전체 길이를 kva에 읽으면 frame 한 장 범위를 넘길 가능성이 큽니다.
-	int is_success = file_read_at_lock(file_page->reopend_file, kva, file_page->length,file_page->offset);
-	if (is_success == -1) {
+	off_t read_byte = file_read_at_lock(file_page->reopend_file, kva, file_page->read_bytes,file_page->offset);
+	if (file_page->zero_bytes > 0) {
+		memset((void *)( (char *) (kva) + file_page->read_bytes),0,file_page->zero_bytes);
+	}
+	if (read_byte == -1) {
+		return false;
+	}
+	if ((size_t) read_byte < file_page->read_bytes) {
 		return false;
 	}
 	return true;
@@ -62,38 +67,58 @@ file_backed_swap_in (struct page *page, void *kva) {
 /* Swap out the page by writeback contents to the file. */
 static bool
 file_backed_swap_out (struct page *page) {
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page = &page->file;
+	struct thread *curr = thread_current();
+	uint64_t *pml4 = curr->pml4;
+
 	// MEMORY -> DISK
 	ASSERT(page->frame != NULL);
 	ASSERT((page->frame)->kva != NULL);
-	// file-backed page 하나는 파일 전체가 아니라 보통 한 page 구간만 담당합니다. 마지막 page는 read_bytes가 PGSIZE보다 작을 수도 있고, 나머지는 zero-fill이어야 합니다. 지금처럼 파일 전체 길이를 kva에 읽으면 frame 한 장 범위를 넘길 가능성이 큽니다.
-	// zero fill
-	// writable 여부 확인, dirty 확인
-	file_write_at_lock(file_page->reopend_file,(page->frame)->kva,file_page->length,file_page->offset);
-	free(page->frame);
+	if (file_page->reopend_file == NULL) {
+		return false;
+	}
+	if (pml4_is_dirty(pml4,page->va) && file_page->writable) {
+		// read_byte == 0 인 페이지 처리
+		off_t read_byte = file_write_at_lock(file_page->reopend_file,(page->frame)->kva,file_page->read_bytes,file_page->offset);
+		if (read_byte == -1) {
+			return false;
+		}
+		if ((size_t) read_byte < file_page->read_bytes) {
+			return false;
+		}
+		pml4_set_dirty(pml4,page->va,0);
+	}
+	// free로 제거만함, eviction에서도 제거하는지 확인 필요
+	// free(page->frame);
 	return true;
 }
 
 /* Destory the file backed page. PAGE will be freed by the caller. */
+/* 파일 기반 페이지를 삭제합니다. PAGE는 호출 측에서 해제합니다. */
 static void
 file_backed_destroy (struct page *page) {
-	struct file_page *file_page UNUSED = &page->file;
-	
-struct file_page {
-	struct file *reopend_file;
-	off_t offset;
-	size_t read_bytes;
-	size_t zero_bytes;
-	size_t length;
-	bool writable;
-};
-	file_page->reopend_file = NULL;
-	file_page->offset = 0;
-	file_page->read_bytes=0;
-	file_page->zero_bytes=0;
-	file_page->length=0;
-	is_writable=false;
+	struct file_page *file_page = &page->file;
+	uint64_t *pml4 = thread_current()->pml4;
+	if (page->frame != NULL) {
+		if (file_page->reopend_file == NULL) {
+			printf("file_backed_destroy에서 파일 페이지 존재하지 않음\n");
+			return;
+		}
+		if (pml4_is_dirty(pml4, page->va) && file_page->writable) {
+			off_t read_byte = file_write_at_lock(file_page->reopend_file,page->frame->kva,file_page->read_bytes,file_page->offset);
+			if (read_byte == -1) {
+				printf("file_backed_destroy에서 read_byte 에러 발생\n");
+				return;
+			}
+			if ((size_t) read_byte < file_page->read_bytes) {
+				printf("file_backed_destroy에서 read_byte 에러 발생\n");
+				return;
+			}
+			pml4_set_dirty(pml4,page->va,0);
+		}
+		
 
+	}
 }
 
 struct mmap_mapping_elem *
@@ -153,6 +178,7 @@ do_mmap (void *addr, size_t length, int writable,
 		aux->offset = page_offset;
 		aux->read_bytes = read_bytes;
 		aux->zero_bytes = zero_bytes;
+		aux->writable =  writable;
 		
 		if (!vm_alloc_page_with_initializer (VM_FILE, upage, writable, lazy_load_file, aux)) {
 			return false;

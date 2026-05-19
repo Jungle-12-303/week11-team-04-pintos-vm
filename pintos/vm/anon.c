@@ -4,6 +4,7 @@
 #include "devices/disk.h"
 #include "lib/kernel/bitmap.h"
 #include "threads/synch.h"
+#include "include/threads/vaddr.h"
 
 /* DO NOT MODIFY BELOW LINE */
 // swap 용도 disk 할당 구간
@@ -65,6 +66,7 @@ anon_swap_in (struct page *page, void *kva) {
 	// swap_slot 유효성 검사
 	if (swap_slot == SWAP_SLOT_INVALID) {
 		lock_release(&swap_lock);
+		memset((page->frame)->kva,0,PGSIZE);
 		return true;
 	}
 	if ((swap_slot >= (disk_size(swap_disk) / 8))) {
@@ -119,6 +121,7 @@ anon_swap_out (struct page *page) {
 	for(int i=0;i<8;i++) {
 		disk_write(swap_disk,anon_page->swap_slot * 8 + i,(void *)((char *)((page->frame)->kva) + i * DISK_SECTOR_SIZE));
 	}
+	// FIXME: evcit 로직의 frame 재사용 규칙을 위해 swap_out에서 초기화 하면 안 됨 -> swap_out 이후 evict에서 이미 처리하고 있음 
 	// 0518 swap_out frame 초기화 추가
 	// free(page->frame);
 	lock_release(&swap_lock);

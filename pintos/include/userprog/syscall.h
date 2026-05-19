@@ -3,6 +3,10 @@
 
 void syscall_init (void);
 
-#endif /* userprog/syscall.h */
+off_t
 file_read_at_lock (struct file *file, void *buffer, off_t size, off_t ofs);
+
+off_t
 file_write_at_lock (struct file *file, const void *buffer, off_t size,off_t ofs);
+
+#endif /* userprog/syscall.h */

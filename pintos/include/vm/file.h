@@ -11,7 +11,6 @@ struct file_page {
 	off_t offset;
 	size_t read_bytes;
 	size_t zero_bytes;
-	size_t length;
 	bool writable;
 };
 
