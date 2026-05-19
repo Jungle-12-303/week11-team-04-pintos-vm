@@ -124,6 +124,9 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		// 	return false;
 		// 	break;
 		}
+		
+		page->writable = writable;
+		
 
 		/* TODO: Insert the page into the spt. */
 		if(!spt_insert_page(spt, page)) {
@@ -348,6 +351,8 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	}
 	struct page *found = spt_find_page(spt, addr);
 	if(found != NULL) {
+		if(write && !found->writable)
+			return false;
 		return vm_do_claim_page(found);
 	}
 	uint64_t *upgae = pg_round_down(addr);
@@ -396,7 +401,7 @@ vm_do_claim_page (struct page *page) {
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	/* TODO: 페이지의 가상 주소(VA)를 프레임의 물리 주소(PA)에 매핑하는 페이지 테이블 항목을 삽입합니다. */
-	if(!pml4_set_page(thread_current()->pml4, page->va, frame->kva, true)) {
+	if(!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)) {
 		printf("vm_do_claim_page(): pml4_set_page failed\n");
 		return false;
 	}
