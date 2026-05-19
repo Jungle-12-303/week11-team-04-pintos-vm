@@ -293,6 +293,8 @@ check_user_laddr (const void *buf, const size_t size) {
 	check_user_addr(end - 1);
 }
 
+/* 사용자 버퍼 BUF[0..SIZE)가 유효한 주소 범위이며 쓰기 가능한 페이지들인지 검사합니다.
+   유효하지 않거나 쓰기 권한이 없으면 프로세스를 종료합니다. */
 static void
 check_user_waddr (const void *buf, const size_t size) {
 	const char *start = buf;
