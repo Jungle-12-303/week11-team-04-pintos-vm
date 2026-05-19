@@ -68,11 +68,11 @@ file_backed_swap_in (struct page *page, void *kva) {
 static bool
 file_backed_swap_out (struct page *page) {
 	struct file_page *file_page = &page->file;
-	uint64_t *pml4 = page->frame->owner_thread->pml4;
 
 	// MEMORY -> DISK
 	ASSERT(page->frame != NULL);
 	ASSERT((page->frame)->kva != NULL);
+	uint64_t *pml4 = page->frame->owner_thread->pml4;
 	if (file_page->reopend_file == NULL) {
 		return false;
 	}
