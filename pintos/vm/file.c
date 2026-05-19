@@ -32,10 +32,10 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 	/* Set up the handler */
 	page->operations = &file_ops;
 
-	// lazy_load_file에서 처리
+	// // lazy_load_file에서 처리
 	// struct file_page *file_page = &page->file;
 
-	// // 파일 정보 넣기
+	// // // 파일 정보 넣기
 	// struct segment *seg =(struct segment *) (page->aux);
 	// file_page->reopend_file = seg->file;
 	// file_page->writable = seg->writable;
@@ -47,7 +47,7 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 static bool
 file_backed_swap_in (struct page *page, void *kva) {
 	// Swaps in a page at kva by reading the contents in from the file. You need to synchronize with the file system.
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page = &page->file;
 	if (file_page->reopend_file == NULL) {
 		return false;
 	}
@@ -68,7 +68,6 @@ file_backed_swap_in (struct page *page, void *kva) {
 static bool
 file_backed_swap_out (struct page *page) {
 	struct file_page *file_page = &page->file;
-
 	// MEMORY -> DISK
 	ASSERT(page->frame != NULL);
 	ASSERT((page->frame)->kva != NULL);
@@ -115,8 +114,6 @@ file_backed_destroy (struct page *page) {
 			}
 			pml4_set_dirty(pml4,page->va,0);
 		}
-		
-
 	}
 }
 
