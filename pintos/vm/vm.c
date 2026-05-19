@@ -217,9 +217,15 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		return vm_do_claim_page(found);
 	}
 	uint64_t *upgae = pg_round_down(addr);
-	if((uint64_t *)addr >=f->rsp - 8 && USER_STACK > (uint64_t *)addr && (uint64_t *)addr >= USER_STACK - (PGSIZE << 8)) {
-		return vm_stack_growth(upgae);
-	} 
+	if (user) {
+		if ((uint64_t *)addr >= f->rsp - 8 && USER_STACK > (uint64_t *)addr && (uint64_t *)addr >= USER_STACK - (PGSIZE << 8)) {
+			return vm_stack_growth(upgae);
+		} 
+	} else {
+		if ((uint64_t *)addr >= thread_current ()->user_rsp - 8 && USER_STACK > (uint64_t *)addr && (uint64_t *)addr >= USER_STACK - (PGSIZE << 8)) {
+			return vm_stack_growth(upgae);
+		} 
+	}
 	return false;
 }
 

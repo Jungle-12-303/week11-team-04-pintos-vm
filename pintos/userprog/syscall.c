@@ -145,6 +145,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			 * 기존값이 양수라면 성공했다고 오인 가능성이 있음
 			 */
 			// f->R.rax = -1; // 실패시 -1 리턴
+			thread_current ()->user_rsp = f->rsp;
 			f->R.rax = syscall_read ((int) arg0, (const char *) arg1, (unsigned) arg2);
 		}
 		break;
@@ -611,7 +612,7 @@ syscall_read (int fd, const void *buffer, unsigned size) {
 		return -1;
 	}
 	if (fde->type == FD_STDIN) {
-		if(!check_user_waddr (buffer, size)) syscall_exit(-1); // TODO: for `pt-grow-stk-sc`, stk growth 범위인지 확인 / handle_fault에서 user stack 저장한거 가져와서 확인하기
+		check_user_waddr (buffer, size); // TODO: for `pt-grow-stk-sc`, stk growth 범위인지 확인 / handle_fault에서 user stack 저장한거 가져와서 확인하기
 		for (unsigned i = 0; i < size; i++) {
 			*(((char *) buffer) + i) = input_getc ();
 		}
@@ -621,7 +622,10 @@ syscall_read (int fd, const void *buffer, unsigned size) {
 	if (opend_file == NULL) {
 		return -1;
 	}
-	if(!check_user_waddr (buffer, size)) syscall_exit(-1); // TODO: for `pt-grow-stk-sc`, stk growth 범위인지 확인
+	check_user_waddr (buffer, size); // TODO: for `pt-grow-stk-sc`, stk growth 범위인지 확인
+	if(buffer < thread_current ()->user_rsp - 8) {
+		syscall_exit(-1);
+	}
 	lock_acquire (&filesys_lock);
 	int byte_written = file_read (opend_file, buffer, size);
 	lock_release (&filesys_lock);
