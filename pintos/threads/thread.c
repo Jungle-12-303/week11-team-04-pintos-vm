@@ -492,6 +492,7 @@ init_thread(struct thread *t, const char *name, int priority)
     t->magic = THREAD_MAGIC;
     t->original_priority = priority;
     list_init(&t->donations);
+    list_init(&t->mmap_mapping);
     t->fd_table = NULL;
     t->waiting_lock = NULL;
 }

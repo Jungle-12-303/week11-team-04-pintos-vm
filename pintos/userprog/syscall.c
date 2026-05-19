@@ -46,6 +46,8 @@ static int 		syscall_dup2 (int oldfd, int newfd);
 static int 		syscall_read (int fd, const void *buffer, unsigned size);
 static int 		syscall_filesize (const int fd);
 static int 		syscall_exec (char *file);
+static void *   syscall_mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+static void 	sysccall_munmap (void *addr);
 
 
 /* System call.
@@ -237,13 +239,13 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		f->R.rax = syscall_dup2 ((int) arg0, (int) arg1);
 		break;
 	}
-	//0517 syscall_mmap 구현
 	case SYS_MMAP: {
-		// fake_func((void *)arg0,(size_t) arg1,(int) arg2,(int) arg3, (off_t) arg4);
+		f->R.rax = syscall_mmap((void *) arg0, (size_t) arg1, (int) arg2, (int) arg3, (off_t) arg4);
+		break;
 	}
-	//0517 syscall_munmap 구현
 	case SYS_MUNMAP: {
-		// fake_func((void *) arg0);
+		sysccall_munmap((void *) arg0);
+		break;
 	}
 	default:{
 		break;
@@ -677,4 +679,28 @@ file_write_at_lock (struct file *file, const void *buffer, off_t size, off_t ofs
 	}
 	return read_byte;
 
+}
+void *
+syscall_mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
+	struct file *file = get_file_from_fd(fd);
+	if(file == NULL)
+		return NULL;
+
+	// char buf[(2 << 15)] = {0};
+	// off_t n_read = file_read_at(file, buf, length, offset);
+	// void *pages = palloc_get_multiple (PAL_USER | PAL_ZERO, n_read / PGSIZE + 1);
+
+	// if(pages == NULL)
+	// 	return NULL;
+
+	// memcpy(pages, buf, n_read);
+	/* vm_alloc_page_with_initializer의 init은 lazy_load이고, 유효한 page가 PAGE로 넘겨진다.
+	   즉, aux로 파일 오프셋 등 정보를 넘기고 init에서 초기화 할 것. */
+	// vm_alloc_page_with_initializer(VM_FILE, upage, writable, init, aux);
+	return do_mmap(addr, length, writable, file, offset);
+}
+
+void
+sysccall_munmap (void *addr) {
+	return do_munmap(addr);
 }

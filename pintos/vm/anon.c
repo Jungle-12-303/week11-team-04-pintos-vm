@@ -120,8 +120,7 @@ anon_swap_out (struct page *page) {
 		disk_write(swap_disk,anon_page->swap_slot * 8 + i,(void *)((char *)((page->frame)->kva) + i * DISK_SECTOR_SIZE));
 	}
 	// 0518 swap_out frame 초기화 추가
-	((page->frame)->kva) = NULL;
-	page->frame = NULL;
+	// free(page->frame);
 	lock_release(&swap_lock);
 	return true;
 }

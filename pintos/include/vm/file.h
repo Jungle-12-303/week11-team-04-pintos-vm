@@ -7,10 +7,20 @@ struct page;
 enum vm_type;
 
 struct file_page {
-	struct file *file;
+	struct file *reopend_file;
+	off_t offset;
+	size_t read_bytes;
+	size_t zero_bytes;
 	size_t length;
-	int writable;
-	off_t ofs;
+	bool writable;
+};
+
+/* file mapping info */
+struct mmap_mapping_elem {
+	void *addr;
+	size_t page_cnt;
+	struct file *reopened_file;
+	struct list_elem elem;
 };
 
 void vm_file_init (void);
